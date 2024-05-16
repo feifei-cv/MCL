@@ -200,7 +200,7 @@ def generate(valid_loader_list, device, model, opt):
 
 if __name__ == "__main__":
 
-    # parser = argparse.ArgumentParser(description="config")
+    parser = argparse.ArgumentParser(description="config")
     # parser = parser_(parser)
     # opt = parser.parse_args()
     # opt = relative_path_to_absolute_path(opt)
@@ -224,5 +224,4 @@ if __name__ == "__main__":
     # opt_pl.path_soft = temp_path
     # logger.info(opt)
     # train(opt, logger, opt_pl)
-    print('initla commit 12')
 
