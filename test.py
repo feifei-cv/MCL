@@ -81,7 +81,7 @@ def validate(valid_loader, device, model, running_metrics_val, domain_id=0):
         images_val = data_i['img'].to(device)
         labels_val = data_i['label'].to(device)
 
-        out = model.BaseNet_DP(images_val, [domain_id])
+        out = model.BaseNet_DP(images_val, [domain_id], ssl=[])
         out = out[0]
 
         outputs = F.interpolate(out['out'], size=images_val.size()[2:], mode='bilinear', align_corners=True)
@@ -100,7 +100,9 @@ if __name__ == "__main__":
 
     opt = relative_path_to_absolute_path(opt)
     opt.logdir = opt.logdir.replace(opt.name, 'test')
-
+    opt.logdir = os.path.join(opt.logdir, opt.name)
+    if not os.path.exists(opt.logdir):
+        os.makedirs(opt.logdir)
     print('RUNDIR: {}'.format(opt.logdir))
     if not os.path.exists(opt.logdir):
         os.makedirs(opt.logdir)
