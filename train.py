@@ -19,7 +19,8 @@ import warnings
 import torch.backends.cudnn as cudnn
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.functional")
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else 'cpu')  #############################
+device = torch.device("cuda:1" if torch.cuda.is_available() else 'cpu')  #############################
+torch.cuda.set_device(device)
 
 def train(opt, logger, opt_pl):
 
@@ -42,7 +43,7 @@ def train(opt, logger, opt_pl):
         running_metrics_val_list.append(runningScore(opt.n_class))
 
     if opt.stage == 'stage1':
-        generate_pl(model, logger, datasets_pl, device, opt_pl)  ################
+        generate_pl(model, logger, datasets_pl, device, opt_pl)  ###
 
     datasets = create_dataset(opt, logger)
     # begin training
@@ -201,27 +202,29 @@ def generate(valid_loader_list, device, model, opt):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="config")
-    # parser = parser_(parser)
-    # opt = parser.parse_args()
-    # opt = relative_path_to_absolute_path(opt)
-    # print('RUNDIR: {}'.format(opt.logdir))
-    # if not os.path.exists(opt.logdir):
-    #     os.makedirs(opt.logdir)
-    # logger = get_logger(opt.logdir)
-    # ## only used for stage1
-    # opt_pl = copy.deepcopy(opt)
-    # opt_pl.noaug = True
-    # opt_pl.noshuffle = True
-    # opt_pl.norepeat = True
-    # opt_pl.soft = True
-    # opt_pl.no_droplast = True
-    # opt_pl.save_path = './Pseudo'
-    # opt_pl.used_save_pseudo = False
-    # temp_path = opt.path_soft.split(os.sep)
-    # temp_path = temp_path[:-1]
-    # temp_path = '/'.join(temp_path)
-    # temp_path += '/'+opt_pl.name
-    # opt_pl.path_soft = temp_path
-    # logger.info(opt)
-    # train(opt, logger, opt_pl)
+    parser = parser_(parser)
+    opt = parser.parse_args()
+    opt = relative_path_to_absolute_path(opt)
+    print('RUNDIR: {}'.format(opt.logdir))
+    if not os.path.exists(opt.logdir):
+        os.makedirs(opt.logdir)
+    logger = get_logger(opt.logdir)
+    ## only used for stage1
+    opt_pl = copy.deepcopy(opt)
+    opt_pl.noaug = True
+    opt_pl.noshuffle = True
+    opt_pl.norepeat = True
+    opt_pl.soft = True
+    opt_pl.no_droplast = True
+    opt_pl.save_path = './Pseudo'
+    opt_pl.used_save_pseudo = False
+    temp_path = opt.path_soft.split(os.sep)
+    temp_path = temp_path[:-1]
+    temp_path = '/'.join(temp_path)
+    temp_path += '/'+opt_pl.name
+    opt_pl.path_soft = temp_path
+    logger.info(opt)
+    train(opt, logger, opt_pl)
+
+
 

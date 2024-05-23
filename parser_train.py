@@ -6,7 +6,7 @@ def parser_(parser):
 
     parser.add_argument('--root', type=str, default=str(project_root), help='root path')
     parser.add_argument('--model_name', type=str, default='deeplabv2', help='deeplabv2')
-    parser.add_argument('--name', type=str, default='gta2city', help='pretrain source model')
+    parser.add_argument('--name', type=str, default='warmup_G2CI', help='pretrain source model')
     parser.add_argument('--lr', type=float, default=0.00025) #1
     parser.add_argument('--bs', type=int, default=4)
     parser.add_argument('--freeze_bn', action='store_true')
@@ -17,7 +17,7 @@ def parser_(parser):
     parser.add_argument('--seed', type=int, default=1337, help='random seed')
     parser.add_argument('--stage', type=str, default='stage1', help='warm_up|stage1')
     #model
-    parser.add_argument('--resume_path', type=str, default='pretrained/warmup/from_gta5_to_cityscapes_on_deeplab101_best_model_warmup.pkl', help='resume model path')
+    parser.add_argument('--resume_path', type=str, default='Code/MST/logs/warmup_G2CI/from_gta5_to_2_on_deeplabv2_best_model.pkl', help='resume model path')
 
     #data
     parser.add_argument('--src_dataset', type=str, default='gta5', help='gta5|cityscapes|mapillary|idd')

@@ -281,7 +281,7 @@ class ResNet101(nn.Module):
             if target_ensembel:
                 x = torch.concat(ssl,  dim=1) #torch.concat(torch.split(x, b//(self.num_target-2), 0), dim=1)
             else:
-                x = torch.concat(ssl[:-1], dim=1)
+                x = torch.concat(ssl[:-1], dim=1) ## the last feature is domain-agnostic
         else:
             x = self.conv1(x)
             x = self.bn1(x)

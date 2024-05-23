@@ -27,7 +27,7 @@ class CustomModel():
         self.best_iou = -100
         self.nets = []
         self.nets_DP = []
-        self.default_gpu = 0  ########################## 
+        self.default_gpu = 1  ##########################
         self.num_target = len(opt.tgt_dataset_list)
         self.domain_id = -1
         if opt.bn == 'sync_bn':
@@ -153,7 +153,6 @@ class CustomModel():
         source_x = source_data['img'].to(device)
         source_label = source_data['label'].to(device)
         source_outputUp_list = []
-
         ############# train for source
         transfered_source_x_list = []
         for i in range(self.num_target):
@@ -172,7 +171,7 @@ class CustomModel():
                 source_output_i = self.BaseNet_DP(transfered_source_x_list[i], [i], feat_list)
             else:
                 source_output_i = self.BaseNet_DP(transfered_source_x_all, [self.num_target + 1], feat_list,
-                                                  ensembel=True)
+                                                  ensembel=True)  ### ensemble classifier prediction
             source_output_i = source_output_i[0]
             source_outputUp = F.interpolate(source_output_i['out'], size=source_x.size()[2:], mode='bilinear',
                                             align_corners=True)
@@ -180,7 +179,7 @@ class CustomModel():
             loss_seg += cross_entropy2d(input=source_outputUp, target=source_label, size_average=True, reduction='mean')
         loss_seg.backward()
 
-        ###################################################### train for target
+        ################ train for target
         for i in range(self.num_target):
             self.domain_id = i
             data_i = data_target_list[i]
@@ -188,15 +187,6 @@ class CustomModel():
             target_params = data_i['params']
             target_lpsoft = data_i['lpsoft'].to(device) if 'lpsoft' in data_i.keys() else None
             threshold_arg = F.interpolate(target_lpsoft, scale_factor=0.25, mode='bilinear', align_corners=True)
-
-            # ### Pseudo-label assignment---one
-            # rectified = threshold_arg
-            # threshold_arg = rectified.max(1, keepdim=True)[1]  ## pseudo-label
-            # rectified = rectified / rectified.sum(1, keepdim=True)
-            # argmax = rectified.max(1, keepdim=True)[0]  ## confidence score
-            # threshold_arg[argmax < self.opt.train_thred] = 250
-            # ## threshold_arg[argmax < 0.5] = 250  ## -1
-
             ### Pseudo-label assignment:  entropy-guided pseudo-label -- sencond
             _, class_num, _, _ = threshold_arg.size()
             predicted_entropy = prob_2_entropy(threshold_arg).sum(dim=1)
@@ -209,21 +199,20 @@ class CustomModel():
                     thres.append(0)
                     continue
                 x = np.sort(x.cpu().numpy())
-                thres.append(x[np.int(np.round(len(x) * 0.5))])
+                thres.append(x[np.int32(np.round(len(x) * 0.5))])
             thres = np.array(thres)
             masks = torch.zeros(threshold_arg.size()).to(device).bool()
             for cl in range(class_num):
                 mask1 = (threshold_arg == cl)
-                mask2 = (predicted_entropy < np.maximum(0.25,thres[cl])).unsqueeze(dim=1) ## 0.2, 0.1，0.3，0.15
-                # mask2 = (predicted_entropy < thres[cl]).unsqueeze(dim=1)  ## 0.2, 0.1，0.3，0.15
+                mask2 = (predicted_entropy < np.maximum(0.25,thres[cl])).unsqueeze(dim=1) ## Eq.(6) 0.2, 0.1，0.3，0.15
                 mask = mask1*mask2
                 masks = masks | mask
             threshold_arg[~masks] = 250
-            #####################
             batch, _, w, h = threshold_arg.shape
+
             ### forward
             feat_list_t = []
-            target_out_list = self.BaseNet_DP(target_imageS, [i, self.num_target], feat_list_t)
+            target_out_list = self.BaseNet_DP(target_imageS, [i, self.num_target], feat_list_t) ### self.num_target correspond domain-agnostic classifier
             target_out = target_out_list[0]
             targetS_out_agnostic = target_out_list[1]
             target_out['out'] = F.interpolate(target_out['out'], size=threshold_arg.shape[2:], mode='bilinear',
@@ -232,14 +221,13 @@ class CustomModel():
                                                         mode='bilinear', align_corners=True)
             threshold_argS = self.label_strong_T(threshold_arg.clone().float(),
                                                  target_params, padding=250, scale=4).to(torch.int64)
-            threshold_arg = threshold_argS  ## strong pseudo-label
+            threshold_arg = threshold_argS
             maskS = (threshold_arg != 250).float()
 
             ### style transfer
             loss = torch.Tensor([0]).to(self.default_gpu)
             loss_CTS_transfered_all = 0
             weights_all = 0
-            JS_Divergence = 0
             variance_all = 0
             i_domain_transfer_list = []
             i_domain_transfer_list.append(target_imageS)
@@ -257,13 +245,6 @@ class CustomModel():
                 target_out_transfer['out'] = F.interpolate(target_out_transfer['out'], size=threshold_arg.shape[2:],
                                                            mode='bilinear', align_corners=True)
                 ## calculate predictive variance
-                # JS_Divergence1 = torch.sum(self.JS_Divergence_With_Temperature(target_out_transfer['out'].detach(),
-                #                                                                target_out['out'].detach(), 2.5), dim=1)
-                # JS_Divergence += JS_Divergence1
-                # exp_JS_Divergence = torch.exp(-JS_Divergence)
-                # weights_all += exp_JS_Divergence.detach()
-
-                ## calculate predictive variance
                 variance1 = torch.sum(F.kl_div(F.log_softmax(target_out_transfer['out'], dim=1),
                                                F.softmax(target_out['out'].detach(), dim=1), reduction='none'), dim=1)
                 variance_all += variance1
@@ -276,7 +257,6 @@ class CustomModel():
                                                       reduction='none')
                 loss_CTS_transfered_all += loss_CTS_transfered
             weights_all /= self.num_target - 1
-
             #### 3、Ensemble-self training
             transfered_target_x_all = torch.concat(i_domain_transfer_list, dim=0)
             transfered_target_x_all_list = self.BaseNet_DP(transfered_target_x_all, [self.num_target + 1], feat_list_t,
@@ -286,11 +266,9 @@ class CustomModel():
                                                           mode='bilinear', align_corners=True)
             loss_ensemble_all = cross_entropy2d(input=ensemble_target_output['out'],
                                                 target=threshold_arg.reshape([batch, w, h]).detach(), reduction='none')
-
             #### 4、naive self-training
             loss_CTS_all = cross_entropy2d(input=target_out['out'],
                                            target=threshold_arg.reshape([batch, w, h]).detach(), reduction='none')
-
             #### re-weighting slef-training
             if self.opt.rectify:
                 loss_ensemble_all = (loss_ensemble_all * weights_all * maskS).sum() / maskS.sum()
@@ -309,40 +287,16 @@ class CustomModel():
             teacher_copy = F.log_softmax(target_out['out'], dim=1)
             ensemble_teacher = F.softmax(ensemble_target_output['out'].detach(), dim=1)
             loss_kd = F.kl_div(student, teacher, reduction='none') + F.kl_div(teacher_copy, ensemble_teacher,reduction='none')
-            # loss_kd = F.kl_div(student, teacher, reduction='none') + F.kl_div(student, ensemble_teacher, reduction='none')
-
             mask = (teacher != 250).float()
             loss_kd = (loss_kd * mask).sum() / mask.sum()
             loss_kd /= self.num_target
             #### total loss
-            # loss += loss_kd + loss_CTS_all + self.opt.ratio * loss_CTS_transfered_all #+ 0.1 * loss_ensemble_all)
-            # loss += loss_kd + loss_CTS_all + (self.opt.ratio * loss_CTS_transfered_all + 0.1 * loss_ensemble_all)
             loss += loss_kd + loss_CTS_all  + (self.opt.ratio * loss_CTS_transfered_all + 0.05*loss_ensemble_all) ## 0.01
-
             loss.backward()
 
         self.BaseOpti.step()
         self.BaseOpti.zero_grad()
         return loss_seg.item(), loss.item(), loss_CTS_all.item(), loss_kd.item(), loss_CTS_transfered_all.item(), loss_ensemble_all.item()
-
-    def entropy(self, pred, reduction='none'):
-
-        pred = F.softmax(pred, dim=1)
-        epsilon = 1e-5
-        H = -pred * torch.log(pred + epsilon)
-        H = H.sum(dim=1)
-        if reduction == 'mean':
-            return H.mean()
-        else:
-            return H
-
-    def JS_Divergence_With_Temperature(self, p, q, temp_factor, get_softmax=True):
-        KLDivLoss = nn.KLDivLoss(reduction='none')
-        if get_softmax:
-            p_softmax_output = F.softmax(p / temp_factor)
-            q_softmax_output = F.softmax(q / temp_factor)
-        log_mean_softmax_output = ((p_softmax_output + q_softmax_output) / 2).log()
-        return (KLDivLoss(log_mean_softmax_output, p_softmax_output) + KLDivLoss(log_mean_softmax_output, q_softmax_output)) / 2
 
     def image_style(self, source_x, target_imageS):
         img_transfer = []
