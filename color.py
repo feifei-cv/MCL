@@ -1,9 +1,5 @@
-# import the necessary packages
 import numpy as np
 import cv2
-#########modify
-
-
 
 def color_transfer(source, target):
     """
@@ -26,9 +22,8 @@ def color_transfer(source, target):
     transfer: NumPy array
         OpenCV image (w, h, 3) NumPy array (uint8)
     """
-    # convert the images from the RGB to L*ab* color space, being
-    # sure to utilizing the floating point data type (note: OpenCV
-    # expects floats to be 32-bit, so use that instead of 64-bit)
+    # convert the images from the RGB to L*ab* color space, being sure to utilizing the
+    # floating point data type (note: OpenCV expects floats to be 32-bit, so use that instead of 64-bit)
     source = cv2.cvtColor(source, cv2.COLOR_BGR2LAB).astype("float32")
     target = cv2.cvtColor(target, cv2.COLOR_BGR2LAB).astype("float32")
 
@@ -41,12 +36,7 @@ def color_transfer(source, target):
     l -= lMeanTar
     a -= aMeanTar
     b -= bMeanTar
-
     epsilon = 1e-30
-    # scale by the standard deviations
-    # l = (lStdTar / lStdSrc) * l
-    # a = (aStdTar / aStdSrc) * a
-    # b = (bStdTar / bStdSrc) * b
     l = ( lStdSrc / (lStdTar+epsilon)) * l
     a = ( aStdSrc / (aStdTar+epsilon)) * a
     b = ( bStdSrc / (bStdTar+epsilon)) * b
@@ -54,16 +44,13 @@ def color_transfer(source, target):
     l += lMeanSrc
     a += aMeanSrc
     b += bMeanSrc
-
-    # clip the pixel intensities to [0, 255] if they fall outside
-    # this range
+    # clip the pixel intensities to [0, 255] if they fall outside this range
     l = np.clip(l, 0, 255)
     a = np.clip(a, 0, 255)
     b = np.clip(b, 0, 255)
 
-    # merge the channels together and convert back to the RGB color
-    # space, being sure to utilize the 8-bit unsigned integer data
-    # type
+    # merge the channels together and convert back to the RGB color space,
+    # being sure to utilize the 8-bit unsigned integer data type
     transfer = cv2.merge([l, a, b])
     transfer = cv2.cvtColor(transfer.astype("uint8"), cv2.COLOR_LAB2BGR)
 
@@ -77,7 +64,6 @@ def image_stats(image):
     -------
     image: NumPy array
         OpenCV image in L*a*b* color space
-
     Returns:
     -------
     Tuple of mean and standard deviations for the L*, a*, and b*
@@ -88,8 +74,6 @@ def image_stats(image):
     (lMean, lStd) = (l.mean(), l.std())
     (aMean, aStd) = (a.mean(), a.std())
     (bMean, bStd) = (b.mean(), b.std())
-
-    # return the color statistics
     return (lMean, lStd, aMean, aStd, bMean, bStd)
 
 
