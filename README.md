@@ -1,58 +1,11 @@
 # Multi-level Collaborative Learning for Multi-Target Domain Adaptive Semantic Segmentation
 
-```
+## Datasets
 
-### Datasets
-
-By default, the datasets are put in ``<root_dir>/Dataset``. Simialr to [here](https://github.com/Mael-zys/CoaST), i.e. ``ln -s path_GTA5 <root_dir>/Dataset/GTA5``
-
-* **GTA5**: Please follow the instructions [here](https://download.visinf.tu-darmstadt.de/data/from_games/) to download images and semantic segmentation annotations. The GTA5 dataset directory should have this basic structure:
-
-```bash
-<root_dir>/Dataset/GTA5/                               % GTA dataset root
-<root_dir>/Dataset/GTA5/images/                        % GTA images
-<root_dir>/Dataset/GTA5/labels/                        % Semantic segmentation labels
-...
-```
-
-* **Cityscapes**: Please follow the instructions in [Cityscape](https://www.cityscapes-dataset.com/) to download the images and ground-truths. The Cityscapes dataset directory should have this basic structure:
-
-```bash
-<root_dir>/Dataset/Cityscapes/                         % Cityscapes dataset root
-<root_dir>/Dataset/Cityscapes/leftImg8bit              % Cityscapes images
-<root_dir>/Dataset/Cityscapes/leftImg8bit/train
-<root_dir>/Dataset/Cityscapes/leftImg8bit/val
-<root_dir>/Dataset/Cityscapes/gtFine                   % Semantic segmentation labels
-<root_dir>/Dataset/Cityscapes/gtFine/train
-<root_dir>/Dataset/Cityscapes/gtFine/val
-...
-```
-
-* **Mapillary**: Please follow the instructions in [Mapillary Vistas](https://www.mapillary.com/dataset/vistas) to download the images and validation ground-truths. The Mapillary Vistas dataset directory should have this basic structure:
-
-```bash
-<root_dir>/Dataset/Mapillary/                          % Mapillary dataset root
-<root_dir>/Dataset/Mapillary/train                     % Mapillary train set
-<root_dir>/Dataset/Mapillary/train/images
-<root_dir>/Dataset/Mapillary/validation                % Mapillary validation set
-<root_dir>/Dataset/Mapillary/validation/images
-<root_dir>/Dataset/Mapillary/validation/labels
-...
-```
-
-* **IDD**: Please follow the instructions in [IDD](https://idd.insaan.iiit.ac.in/) to download the images and validation ground-truths. The IDD Segmentation dataset directory should have this basic structure:
-
-```bash
-<root_dir>/Dataset/IDD_Segmentation/                         % IDD dataset root
-<root_dir>/Dataset/IDD_Segmentation/leftImg8bit              % IDD images
-<root_dir>/Dataset/IDD_Segmentation/leftImg8bit/train
-<root_dir>/Dataset/IDD_Segmentation/leftImg8bit/val
-<root_dir>/Dataset/IDD_Segmentation/gtFine                   % Semantic segmentation labels
-<root_dir>/Dataset/IDD_Segmentation/gtFine/val
-...
-```
+By default, the datasets are put in ``<root_dir>/Dataset``. Simialr to [CoaST](https://github.com/Mael-zys/CoaST/).
 
 ## step 1: Pre-trained models
+
 ## 7-class setting warmup
  ```bash
 python train.py --name warmup_G2CI --src_dataset gta5 --src_rootpath Dataset/GTA5 --tgt_dataset cityscapes idd --tgt_rootpath Dataset/Cityscapes Dataset/IDD_Segmentation --stage warm_up --freeze_bn --gan Vanilla --lr 2.5e-4 --adv 0.001 --no_resume
