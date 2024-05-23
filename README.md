@@ -2,7 +2,7 @@
 
 ## Datasets
 
-By default, the datasets are put in ``<root_dir>/Dataset``. Simialr to [CoaST](https://github.com/Mael-zys/CoaST/).
+By default, the datasets are put in ``<root_dir>/Dataset``. Similar to [CoaST](https://github.com/Mael-zys/CoaST/).
 
 ## step 1: Pre-trained models
 
