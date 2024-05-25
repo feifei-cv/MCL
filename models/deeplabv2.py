@@ -6,11 +6,16 @@ import torch.utils.model_zoo as model_zoo
 import torch
 import numpy as np
 from models.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
-from models.cnsn import instance_norm_mix, calc_ins_mean_std
+import warnings
+from functools import partial
+from torchvision import models
 affine_par = True
+from .backbone import mit_b0, mit_b1, mit_b2, mit_b3, mit_b4, mit_b5
+
+
 # import pdb
 
-
+######### For ResNet101 backbone
 def outS(i):
     i = int(i)
     i = (i + 1) / 2
@@ -218,11 +223,9 @@ class ResNet101(nn.Module):
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3,
                                bias=False)
         self.bn1 = BatchNorm(64, affine=affine_par)
-
-        # for i in self.bn1.parameters():
-        #     i.requires_grad = False
         self.relu = nn.ReLU(inplace=True)
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1, ceil_mode=True)  # change
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1, ceil_mode=True)
+
         self.layer1 = self._make_layer(block, 64, layers[0], BatchNorm=BatchNorm, num_target=num_target)
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2, BatchNorm=BatchNorm, num_target=num_target)
         self.layer3 = self._make_layer(block, 256, layers[2], stride=1, dilation=2, BatchNorm=BatchNorm, num_target=num_target)
@@ -444,3 +447,412 @@ def Deeplab(BatchNorm, num_classes=7, num_target=1, freeze_bn=False, restore_fro
         # #model.load_state_dict(checkpoint['ema'])
         
     return model
+
+
+######### For VGG backbone
+class VGG(nn.Module):
+
+    def __init__(self, vgg, num_classes, BatchNorm, num_target=1, bn_clr=False, stage=None):
+        super(VGG, self).__init__()
+        self.bn_clr = bn_clr
+        self.num_target = num_target
+
+        features, classifier = list(vgg.features.children()), list(vgg.classifier.children())
+        features = nn.Sequential(*(features[i] for i in list(range(23)) + list(range(24, 30))))
+        for i in [23, 25, 27]:
+            features[i].dilation = (2, 2)
+            features[i].padding = (2, 2)
+        fc6 = nn.Conv2d(512, 1024, kernel_size=3, padding=4, dilation=4)
+        fc7 = nn.Conv2d(1024, 1024, kernel_size=3, padding=4, dilation=4)
+        self.features = nn.Sequential(
+            *([features[i] for i in range(len(features))] + [fc6, nn.ReLU(inplace=True), fc7, nn.ReLU(inplace=True)]))
+
+
+        self.layer5_list = nn.ModuleList()
+        if stage == 'stage1':
+            for i in range(self.num_target):
+                if i != self.num_target -1:
+                    layer = self._make_pred_layer(Classifier_Module2, 1024, [6, 12, 18, 24], [6, 12, 18, 24], num_classes)
+                else:
+                    layer = self._make_pred_layer(Classifier_Module2, 1024*(self.num_target -2), [6, 12, 18, 24], [6, 12, 18, 24], num_classes) ## ensemble
+                self.layer5_list.append(layer)
+        else:
+            for i in range(self.num_target):
+                layer = self._make_pred_layer(Classifier_Module2, 1024, [6, 12, 18, 24], [6, 12, 18, 24], num_classes)
+                self.layer5_list.append(layer)
+
+        if self.bn_clr:
+            self.bn_pretrain = BatchNorm(1024, affine=affine_par)
+        self._initialize_weights()
+
+    def _make_pred_layer(self, block, inplanes, dilation_series, padding_series, num_classes):
+        return block(inplanes, dilation_series, padding_series, num_classes)
+
+
+    def forward(self, x, domain_list, ssl, target_ensembel=False, ensembel=False):
+
+        if ensembel:
+            if target_ensembel:
+                x = torch.concat(ssl,  dim=1) #torch.concat(torch.split(x, b//(self.num_target-2), 0), dim=1)
+            else:
+                x = torch.concat(ssl[:-1], dim=1) ## the last feature is domain-agnostic
+        else:
+            x = self.features(x)
+            ssl.append(x)
+            if self.bn_clr:
+                x = self.bn_pretrain(x)
+
+        outputs = []
+        for i in domain_list:
+            x1 = self.layer5_list[i](x, get_feat=True)  # produce segmap
+            outputs.append(x1)
+
+        return outputs
+
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                if m.bias is not None:
+                    m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+            elif isinstance(m, nn.Linear):
+                m.weight.data.normal_(0, 0.01)
+                m.bias.data.zero_()
+            elif isinstance(m, SynchronizedBatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+
+    def get_1x_lr_params(self):
+
+        b = []
+        for layer in self.features:
+            b.append(layer.parameters())
+        for j in range(len(b)):
+            for i in b[j]:
+                yield i
+
+    def get_1x_lr_params_new(self):
+
+        b = []
+        for layer in self.features:
+            b.append(layer.parameters())
+        for j in range(len(b)):
+            for i in b[j]:
+                yield i
+
+        b1 = []
+        if self.bn_clr:
+            b1.append(self.bn_pretrain.parameters())
+
+        for layer in self.layer5_list:
+            if layer != self.layer5_list[-2]: ## -1
+                b1.append(layer.parameters())
+
+        for j in range(len(b1)):
+            for i in b1[j]:
+                yield i
+
+    def get_10x_lr_params(self):
+
+        b = []
+        if self.bn_clr:
+            b.append(self.bn_pretrain.parameters())
+
+            # b.append(self.layer5.parameters())
+        for layer in self.layer5_list:
+            b.append(layer.parameters())
+
+        for j in range(len(b)):
+            for i in b[j]:
+                yield i
+
+    def get_10x_lr_params_new(self):
+
+        b = []
+        layer = self.layer5_list[-2] ##-1
+        b.append(layer.parameters())
+
+        for j in range(len(b)):
+            for i in b[j]:
+                yield i
+
+
+    def optim_parameters_new(self, args):
+        return [{'params': self.get_1x_lr_params_new(), 'lr': args.learning_rate},
+                {'params': self.get_10x_lr_params_new(), 'lr': 10 * args.learning_rate}]
+
+    def optim_parameters(self, args):
+        return [{'params': self.get_1x_lr_params(), 'lr': args.learning_rate},
+                {'params': self.get_10x_lr_params(), 'lr': 10 * args.learning_rate}]
+
+    def adjust_learning_rate(self, args, optimizer, i):
+        lr = args.learning_rate * ((1 - float(i) / args.num_steps) ** (args.power))
+        optimizer.param_groups[0]['lr'] = lr
+        if len(optimizer.param_groups) > 1:
+            optimizer.param_groups[1]['lr'] = lr * 10
+
+    def CrossEntropy2d(self, predict, target, weight=None, size_average=True):
+        assert not target.requires_grad
+        assert predict.dim() == 4
+        assert target.dim() == 3
+        assert predict.size(0) == target.size(0), "{0} vs {1} ".format(predict.size(0), target.size(0))
+        assert predict.size(2) == target.size(1), "{0} vs {1} ".format(predict.size(2), target.size(1))
+        assert predict.size(3) == target.size(2), "{0} vs {1} ".format(predict.size(3), target.size(3))
+        n, c, h, w = predict.size()
+        target_mask = (target >= 0) * (target != 255)
+        target = target[target_mask]
+        if not target.data.dim():
+            return Variable(torch.zeros(1))
+        predict = predict.transpose(1, 2).transpose(2, 3).contiguous()
+        predict = predict[target_mask.view(n, h, w, 1).repeat(1, 1, 1, c)].view(-1, c)
+        loss = F.cross_entropy(predict, target, weight=weight, size_average=size_average)
+        return loss
+
+
+def DeeplabVGG(BatchNorm, num_classes=7, num_target=1, freeze_bn=False, restore_from=None, initialization=None,
+            bn_clr=False, stage=None):
+
+    vgg = models.vgg16()
+    model = VGG(vgg, num_classes, BatchNorm, num_target=num_target, bn_clr=bn_clr, stage=stage)
+
+    if freeze_bn:
+        model.apply(freeze_bn_func)
+    if initialization is None:
+        # pretrain_dict = model_zoo.load_url('https://download.pytorch.org/models/vgg16_bn-6c64b313.pth')
+        pretrain_dict = model_zoo.load_url('https://download.pytorch.org/models/vgg16-397923af.pth')
+    else:
+        pretrain_dict = torch.load(initialization)['state_dict']
+    model_dict = {}
+    state_dict = model.state_dict()
+    for k, v in pretrain_dict.items():
+        if k in state_dict:
+            model_dict[k] = v
+    state_dict.update(model_dict)
+    model.load_state_dict(state_dict)
+
+    if restore_from is not None:
+        checkpoint = torch.load(restore_from)['VGG']["model_state"]
+        model_dict = {}
+        state_dict = model.state_dict()
+        for k, v in checkpoint.items():
+            if k in state_dict:
+                model_dict[k] = v
+        state_dict.update(model_dict)
+        model.load_state_dict(state_dict)
+        # checkpoint = torch.load(restore_from)
+        # model.load_state_dict(checkpoint['ResNet101']["model_state"])
+        # #model.load_state_dict(checkpoint['ema'])
+
+    return model
+
+
+
+###### For Segformer backbone
+class SegFormer(nn.Module):
+    def __init__(self, num_classes,  BatchNorm, num_target=1, bn_clr=False, stage=None, phi='b5', pretrained=True):
+        super(SegFormer, self).__init__()
+
+        self.bn_clr = bn_clr
+        self.num_target = num_target
+
+        self.in_channels = {
+            'b0': [32, 64, 160, 256], 'b1': [64, 128, 320, 512], 'b2': [64, 128, 320, 512],
+            'b3': [64, 128, 320, 512], 'b4': [64, 128, 320, 512], 'b5': [64, 128, 320, 512],
+        }[phi]
+        self.backbone = {
+            'b0': mit_b0, 'b1': mit_b1, 'b2': mit_b2,
+            'b3': mit_b3, 'b4': mit_b4, 'b5': mit_b5,
+        }[phi](pretrained)
+
+        # self.embedding_dim = {
+        #     'b0': 256, 'b1': 256, 'b2': 768,
+        #     'b3': 768, 'b4': 768, 'b5': 768,
+        # }[phi]
+        # self.decode_head = SegFormerHead(num_classes, self.in_channels, self.embedding_dim)
+
+        self.layer5_list = nn.ModuleList()
+        if stage == 'stage1':
+            for i in range(self.num_target):
+                if i != self.num_target -1:
+                    layer = self._make_pred_layer(Classifier_Module2, 512, [6, 12, 18, 24], [6, 12, 18, 24], num_classes)
+                else:
+                    layer = self._make_pred_layer(Classifier_Module2, 512*(self.num_target -2), [6, 12, 18, 24], [6, 12, 18, 24], num_classes) ## ensemble
+                self.layer5_list.append(layer)
+        else:
+            for i in range(self.num_target):
+                layer = self._make_pred_layer(Classifier_Module2, 512, [6, 12, 18, 24], [6, 12, 18, 24], num_classes)
+                self.layer5_list.append(layer)
+
+        if self.bn_clr:
+            self.bn_pretrain = BatchNorm(512, affine=affine_par)
+
+    def _make_pred_layer(self, block, inplanes, dilation_series, padding_series, num_classes):
+        return block(inplanes, dilation_series, padding_series, num_classes)
+
+    def forward(self, x, domain_list, ssl, target_ensembel=False, ensembel=False):
+        # H, W = inputs.size(2), inputs.size(3)
+        # x = self.backbone.forward(inputs)
+        #
+        #
+        # x = self.decode_head.forward(x)
+        #
+        # x = F.interpolate(x, size=(H, W), mode='bilinear', align_corners=True)
+
+        if ensembel:
+            if target_ensembel:
+                x = torch.concat(ssl,  dim=1) #torch.concat(torch.split(x, b//(self.num_target-2), 0), dim=1)
+            else:
+                x = torch.concat(ssl[:-1], dim=1) ## the last feature is domain-agnostic
+        else:
+            x = self.backbone.forward(x)[-1]
+            ssl.append(x)
+            if self.bn_clr:
+                x = self.bn_pretrain(x)
+
+        outputs = []
+        for i in domain_list:
+            x1 = self.layer5_list[i](x, get_feat=True)  # produce segmap
+            outputs.append(x1)
+
+        return outputs
+
+    def get_1x_lr_params(self):
+
+        b = []
+        for child in self.backbone.children():
+            b.append(child)
+
+        for i in range(len(b)):
+            for j in b[i].modules():
+                jj = 0
+                for k in j.parameters():
+                    jj += 1
+                    if k.requires_grad:
+                        yield k
+
+    def get_10x_lr_params(self):
+
+        b = []
+        if self.bn_clr:
+            b.append(self.bn_pretrain.parameters())
+
+            # b.append(self.layer5.parameters())
+        for layer in self.layer5_list:
+            b.append(layer.parameters())
+
+        for j in range(len(b)):
+            for i in b[j]:
+                yield i
+
+    def get_1x_lr_params_new(self):
+
+        b = []
+        for child in self.backbone.children():
+            b.append(child)
+
+        for i in range(len(b)):
+            for j in b[i].modules():
+                jj = 0
+                for k in j.parameters():
+                    jj += 1
+                    if k.requires_grad:
+                        yield k
+        b1 = []
+        if self.bn_clr:
+            b1.append(self.bn_pretrain.parameters())
+
+        for layer in self.layer5_list:
+            if layer != self.layer5_list[-2]:  ## -1
+                b1.append(layer.parameters())
+
+        for j in range(len(b1)):
+            for i in b1[j]:
+                yield i
+
+    def get_10x_lr_params_new(self):
+
+        b = []
+
+        # b.append(self.layer5.parameters())
+        layer = self.layer5_list[-2]  ##-1
+        b.append(layer.parameters())
+
+        for j in range(len(b)):
+            for i in b[j]:
+                yield i
+
+
+    def optim_parameters_new(self, args):
+        return [{'params': self.get_1x_lr_params_new(), 'lr': args.learning_rate},
+                {'params': self.get_10x_lr_params_new(), 'lr': 10 * args.learning_rate}]
+
+    def optim_parameters(self, args):
+        return [{'params': self.get_1x_lr_params(), 'lr': args.learning_rate},
+                {'params': self.get_10x_lr_params(), 'lr': 10 * args.learning_rate}]
+
+    def adjust_learning_rate(self, args, optimizer, i):
+        lr = args.learning_rate * ((1 - float(i) / args.num_steps) ** (args.power))
+        optimizer.param_groups[0]['lr'] = lr
+        if len(optimizer.param_groups) > 1:
+            optimizer.param_groups[1]['lr'] = lr * 10
+
+    def CrossEntropy2d(self, predict, target, weight=None, size_average=True):
+        assert not target.requires_grad
+        assert predict.dim() == 4
+        assert target.dim() == 3
+        assert predict.size(0) == target.size(0), "{0} vs {1} ".format(predict.size(0), target.size(0))
+        assert predict.size(2) == target.size(1), "{0} vs {1} ".format(predict.size(2), target.size(1))
+        assert predict.size(3) == target.size(2), "{0} vs {1} ".format(predict.size(3), target.size(3))
+        n, c, h, w = predict.size()
+        target_mask = (target >= 0) * (target != 255)
+        target = target[target_mask]
+        if not target.data.dim():
+            return Variable(torch.zeros(1))
+        predict = predict.transpose(1, 2).transpose(2, 3).contiguous()
+        predict = predict[target_mask.view(n, h, w, 1).repeat(1, 1, 1, c)].view(-1, c)
+        loss = F.cross_entropy(predict, target, weight=weight, size_average=size_average)
+        return loss
+
+
+
+def DeeplabSegFormer(BatchNorm, num_classes=7, num_target=1, freeze_bn=False, restore_from=None, initialization=None,
+            bn_clr=False, stage=None):
+
+    model = SegFormer(num_classes, BatchNorm, num_target=num_target, bn_clr=bn_clr, stage=stage, phi='b5')
+
+    if freeze_bn:
+        model.apply(freeze_bn_func)
+    # if initialization is None:
+    #     # pretrain_dict = model_zoo.load_url('https://download.pytorch.org/models/vgg16_bn-6c64b313.pth')
+    #     pretrain_dict = model_zoo.load_url('https://download.pytorch.org/models/vgg16-397923af.pth')
+    # else:
+    #     pretrain_dict = torch.load(initialization)['state_dict']
+    #
+    # model_dict = {}
+    # state_dict = model.state_dict()
+    # for k, v in pretrain_dict.items():
+    #     if k in state_dict:
+    #         model_dict[k] = v
+    # state_dict.update(model_dict)
+    # model.load_state_dict(state_dict)
+
+    if restore_from is not None:
+        checkpoint = torch.load(restore_from)['SegFormer']["model_state"]
+        model_dict = {}
+        state_dict = model.state_dict()
+        for k, v in checkpoint.items():
+            if k in state_dict:
+                model_dict[k] = v
+        state_dict.update(model_dict)
+        model.load_state_dict(state_dict)
+        # checkpoint = torch.load(restore_from)
+        # model.load_state_dict(checkpoint['ResNet101']["model_state"])
+        # #model.load_state_dict(checkpoint['ema'])
+
+    return model
+
+

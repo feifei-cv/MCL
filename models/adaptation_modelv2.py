@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import torch
 import numpy as np
 from models.sync_batchnorm import SynchronizedBatchNorm2d, DataParallelWithCallback
-from models.deeplabv2 import Deeplab
+from models.deeplabv2 import Deeplab, DeeplabVGG, DeeplabSegFormer
 from models.discriminator import FCDiscriminator
 from .utils import freeze_bn, get_scheduler, cross_entropy2d
 from data.randaugment import affine_sample
@@ -27,7 +27,7 @@ class CustomModel():
         self.best_iou = -100
         self.nets = []
         self.nets_DP = []
-        self.default_gpu = 1  ##########################
+        self.default_gpu = 0  ##########################
         self.num_target = len(opt.tgt_dataset_list)
         self.domain_id = -1
         if opt.bn == 'sync_bn':
@@ -42,11 +42,25 @@ class CustomModel():
             restore_from = opt.resume_path
         self.best_iou = 0
         if self.opt.stage == 'stage1' and opt.norepeat == False:
-            self.BaseNet = Deeplab(BatchNorm, num_classes=self.class_numbers, num_target=len(opt.tgt_dataset_list) + 2,
+            # self.BaseNet = Deeplab(BatchNorm, num_classes=self.class_numbers, num_target=len(opt.tgt_dataset_list) + 2,
+            #                        freeze_bn=False, restore_from=restore_from, stage=self.opt.stage)
+            self.BaseNet = DeeplabVGG(BatchNorm, num_classes=self.class_numbers, num_target=len(opt.tgt_dataset_list) + 2,
                                    freeze_bn=False, restore_from=restore_from, stage=self.opt.stage)
+
+            # self.BaseNet = DeeplabSegFormer(BatchNorm, num_classes=self.class_numbers,
+            #                           num_target=len(opt.tgt_dataset_list) + 2,
+            #                           freeze_bn=False, restore_from=restore_from, stage=self.opt.stage)
+
         else:
-            self.BaseNet = Deeplab(BatchNorm, num_classes=self.class_numbers, num_target=len(opt.tgt_dataset_list),
-                                   freeze_bn=False, restore_from=restore_from, stage=self.opt.stage)
+            # self.BaseNet = Deeplab(BatchNorm, num_classes=self.class_numbers, num_target=len(opt.tgt_dataset_list),
+            #                        freeze_bn=False, restore_from=restore_from, stage=self.opt.stage)
+
+            # self.BaseNet = DeeplabVGG(BatchNorm, num_classes=self.class_numbers, num_target=len(opt.tgt_dataset_list),
+            #                        freeze_bn=False, restore_from=restore_from, stage=self.opt.stage)
+            self.BaseNet = DeeplabSegFormer(BatchNorm, num_classes=self.class_numbers,
+                                            num_target=len(opt.tgt_dataset_list) + 2,
+                                            freeze_bn=False, restore_from=restore_from, stage=self.opt.stage)
+
         logger.info('the backbone is {}'.format(opt.model_name))
         self.nets.extend([self.BaseNet])
         self.optimizers = []
