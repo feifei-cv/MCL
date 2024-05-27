@@ -25,5 +25,5 @@ sh test.sh
 
 ## Acknowledgements
 
-This codebase is heavily borrowed from [CoaST](https://github.com/Mael-zys/CoaST/). It is our pleasure to acknowledge their contributions.
+This codebase is heavily borrowed from [CoaST](https://github.com/Mael-zys/CoaST/) and [DAFormer](https://github.com/lhoyer/DAFormer). It is our pleasure to acknowledge their contributions.
 
