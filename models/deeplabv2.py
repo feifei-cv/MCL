@@ -650,7 +650,7 @@ def DeeplabVGG(BatchNorm, num_classes=7, num_target=1, freeze_bn=False, restore_
 
 
 
-###### For Segformer backbone
+###### For Segformer backbone, Adapt from DAFormer
 def resize(input,
            size=None,
            scale_factor=None,
