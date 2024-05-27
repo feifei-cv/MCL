@@ -256,15 +256,15 @@ def affine_sample(tensor, v, type):
     # tensor: B*C*H*W
     # v: scalar, translation param
     if type == 'Rotate':
-        theta = np.array([[np.cos(v/180*np.pi), -np.sin(v/180*np.pi), 0], [np.sin(v/180*np.pi), np.cos(v/180*np.pi), 0]]).astype(np.float)
+        theta = np.array([[np.cos(v/180*np.pi), -np.sin(v/180*np.pi), 0], [np.sin(v/180*np.pi), np.cos(v/180*np.pi), 0]]).astype(np.float64)
     elif type == 'ShearX':
-        theta = np.array([[1, v, 0], [0, 1, 0]]).astype(np.float)
+        theta = np.array([[1, v, 0], [0, 1, 0]]).astype(np.float64)
     elif type == 'ShearY':
-        theta = np.array([[1, 0, 0], [v, 1, 0]]).astype(np.float)
+        theta = np.array([[1, 0, 0], [v, 1, 0]]).astype(np.float64)
     elif type == 'TranslateX':
-        theta = np.array([[1, 0, v], [0, 1, 0]]).astype(np.float)
+        theta = np.array([[1, 0, v], [0, 1, 0]]).astype(np.float64)
     elif type == 'TranslateY':
-        theta = np.array([[1, 0, 0], [0, 1, v]]).astype(np.float)
+        theta = np.array([[1, 0, 0], [0, 1, v]]).astype(np.float64)
 
     H = tensor.shape[2]
     W = tensor.shape[3]

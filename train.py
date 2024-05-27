@@ -19,8 +19,9 @@ import warnings
 import torch.backends.cudnn as cudnn
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.functional")
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else 'cpu')  #############################
+device = torch.device("cuda:1" if torch.cuda.is_available() else 'cpu')  #############################
 torch.cuda.set_device(device)
+
 
 def train(opt, logger, opt_pl):
 
@@ -41,7 +42,7 @@ def train(opt, logger, opt_pl):
     time_meter = averageMeter()
     for i in range(len(opt.tgt_dataset_list)):
         running_metrics_val_list.append(runningScore(opt.n_class))
-
+    #
     if opt.stage == 'stage1':
         generate_pl(model, logger, datasets_pl, device, opt_pl)  ###
 

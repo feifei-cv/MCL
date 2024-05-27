@@ -10,10 +10,10 @@ import warnings
 from functools import partial
 from torchvision import models
 affine_par = True
+
+from mmcv.cnn import ConvModule, DepthwiseSeparableConvModule
 from .backbone import mit_b0, mit_b1, mit_b2, mit_b3, mit_b4, mit_b5
 
-
-# import pdb
 
 ######### For ResNet101 backbone
 def outS(i):
@@ -622,7 +622,6 @@ def DeeplabVGG(BatchNorm, num_classes=7, num_target=1, freeze_bn=False, restore_
     if freeze_bn:
         model.apply(freeze_bn_func)
     if initialization is None:
-        # pretrain_dict = model_zoo.load_url('https://download.pytorch.org/models/vgg16_bn-6c64b313.pth')
         pretrain_dict = model_zoo.load_url('https://download.pytorch.org/models/vgg16-397923af.pth')
     else:
         pretrain_dict = torch.load(initialization)['state_dict']
@@ -652,6 +651,218 @@ def DeeplabVGG(BatchNorm, num_classes=7, num_target=1, freeze_bn=False, restore_
 
 
 ###### For Segformer backbone
+def resize(input,
+           size=None,
+           scale_factor=None,
+           mode='nearest',
+           align_corners=None,
+           warning=True):
+    if warning:
+        if size is not None and align_corners:
+            input_h, input_w = tuple(int(x) for x in input.shape[2:])
+            output_h, output_w = tuple(int(x) for x in size)
+            if output_h > input_h or output_w > output_h:
+                if ((output_h > 1 and output_w > 1 and input_h > 1
+                     and input_w > 1) and (output_h - 1) % (input_h - 1)
+                        and (output_w - 1) % (input_w - 1)):
+                    warnings.warn(
+                        f'When align_corners={align_corners}, '
+                        'the output would more aligned if '
+                        f'input size {(input_h, input_w)} is `x+1` and '
+                        f'out size {(output_h, output_w)} is `nx+1`')
+    return F.interpolate(input, size, scale_factor, mode, align_corners)
+
+
+class ASPPModule(nn.ModuleList):
+    """Atrous Spatial Pyramid Pooling (ASPP) Module.
+
+    Args:
+        dilations (tuple[int]): Dilation rate of each layer.
+        in_channels (int): Input channels.
+        channels (int): Channels after modules, before conv_seg.
+        conv_cfg (dict|None): Config of conv layers.
+        norm_cfg (dict|None): Config of norm layers.
+        act_cfg (dict): Config of activation layers.
+    """
+
+    def __init__(self, dilations, in_channels, channels, conv_cfg, norm_cfg,
+                 act_cfg):
+        super(ASPPModule, self).__init__()
+        self.dilations = dilations
+        self.in_channels = in_channels
+        self.channels = channels
+        self.conv_cfg = conv_cfg
+        self.norm_cfg = norm_cfg
+        self.act_cfg = act_cfg
+        for dilation in dilations:
+            self.append(
+                ConvModule(
+                    self.in_channels,
+                    self.channels,
+                    1 if dilation == 1 else 3,
+                    dilation=dilation,
+                    padding=0 if dilation == 1 else dilation,
+                    conv_cfg=self.conv_cfg,
+                    norm_cfg=self.norm_cfg,
+                    act_cfg=self.act_cfg))
+
+    def forward(self, x):
+        """Forward function."""
+        aspp_outs = []
+        for aspp_module in self:
+            aspp_outs.append(aspp_module(x))
+
+        return aspp_outs
+
+
+class DepthwiseSeparableASPPModule(ASPPModule):
+    """Atrous Spatial Pyramid Pooling (ASPP) Module with depthwise separable
+    conv."""
+
+    def __init__(self, **kwargs):
+        super(DepthwiseSeparableASPPModule, self).__init__(**kwargs)
+        for i, dilation in enumerate(self.dilations):
+            if dilation > 1:
+                self[i] = DepthwiseSeparableConvModule(
+                    self.in_channels,
+                    self.channels,
+                    3,
+                    dilation=dilation,
+                    padding=dilation,
+                    norm_cfg=self.norm_cfg,
+                    act_cfg=self.act_cfg)
+
+
+class ASPPWrapper(nn.Module):
+
+    def __init__(self,
+                 in_channels,
+                 channels,
+                 sep,
+                 dilations,
+                 pool,
+                 norm_cfg,
+                 act_cfg,
+                 align_corners,
+                 context_cfg=None):
+        super(ASPPWrapper, self).__init__()
+        assert isinstance(dilations, (list, tuple))
+        self.dilations = dilations
+        self.align_corners = align_corners
+        if pool:
+            self.image_pool = nn.Sequential(
+                nn.AdaptiveAvgPool2d(1),
+                ConvModule(
+                    in_channels,
+                    channels,
+                    1,
+                    norm_cfg=norm_cfg,
+                    act_cfg=act_cfg))
+        else:
+            self.image_pool = None
+        if context_cfg is not None:
+            self.context_layer = build_layer(in_channels, channels,
+                                             **context_cfg)
+        else:
+            self.context_layer = None
+        ASPP = {True: DepthwiseSeparableASPPModule, False: ASPPModule}[sep]
+        self.aspp_modules = ASPP(
+            dilations=dilations,
+            in_channels=in_channels,
+            channels=channels,
+            norm_cfg=norm_cfg,
+            conv_cfg=None,
+            act_cfg=act_cfg)
+        self.bottleneck = ConvModule(
+            (len(dilations) + int(pool) + int(bool(context_cfg))) * channels,
+            channels,
+            kernel_size=3,
+            padding=1,
+            norm_cfg=norm_cfg,
+            act_cfg=act_cfg)
+
+    def forward(self, x):
+        """Forward function."""
+        aspp_outs = []
+        if self.image_pool is not None:
+            aspp_outs.append(
+                resize(
+                    self.image_pool(x),
+                    size=x.size()[2:],
+                    mode='bilinear',
+                    align_corners=self.align_corners))
+        if self.context_layer is not None:
+            aspp_outs.append(self.context_layer(x))
+        aspp_outs.extend(self.aspp_modules(x))
+        aspp_outs = torch.cat(aspp_outs, dim=1)
+
+        output = self.bottleneck(aspp_outs)
+        return output
+
+
+class MLP(nn.Module):
+    """Linear Embedding."""
+
+    def __init__(self, input_dim=2048, embed_dim=768):
+        super().__init__()
+        self.proj = nn.Linear(input_dim, embed_dim)
+
+    def forward(self, x):
+        x = x.flatten(2).transpose(1, 2).contiguous()
+        x = self.proj(x)
+        return x
+
+
+def build_layer(in_channels, out_channels, type, **kwargs):
+    if type == 'id':
+        return nn.Identity()
+    elif type == 'mlp':
+        return MLP(input_dim=in_channels, embed_dim=out_channels)
+    elif type == 'conv':
+        return ConvModule(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            padding=kwargs['kernel_size'] // 2,
+            **kwargs)
+    elif type == 'aspp':
+        return ASPPWrapper(
+            in_channels=in_channels, channels=out_channels, **kwargs)
+    else:
+        raise NotImplementedError(type)
+
+
+class Classifier_Module3(nn.Module):
+    def __init__(self, embed_dims, channels, dropout_ratio, num_classes, fusion_cfg):
+        super(Classifier_Module3, self).__init__()
+        self.fuse_layer = build_layer(embed_dims, channels, **fusion_cfg)
+        self.dropout_ratio = dropout_ratio
+        if self.dropout_ratio > 0:
+            self.dropout = nn.Dropout2d(self.dropout_ratio)
+        else:
+            self.dropout = None
+        self.conv_seg = nn.Conv2d(channels, num_classes, kernel_size=1)
+
+    def cls_seg(self, feat):
+        """Classify each pixel."""
+        if self.dropout is not None:
+            feat = self.dropout(feat)
+        output = self.conv_seg(feat)
+        return output
+
+    def forward(self, x, get_feat=False):
+
+        out_feat = self.fuse_layer(x) ## ASPP
+        out = self.cls_seg(out_feat) ### classifier
+
+        if get_feat:
+            out_dict = {}
+            out_dict['feat'] = out_feat
+            out_dict['out'] = out
+            return out_dict
+        else:
+            return out
+
+
 class SegFormer(nn.Module):
     def __init__(self, num_classes,  BatchNorm, num_target=1, bn_clr=False, stage=None, phi='b5', pretrained=True):
         super(SegFormer, self).__init__()
@@ -668,39 +879,67 @@ class SegFormer(nn.Module):
             'b3': mit_b3, 'b4': mit_b4, 'b5': mit_b5,
         }[phi](pretrained)
 
-        # self.embedding_dim = {
-        #     'b0': 256, 'b1': 256, 'b2': 768,
-        #     'b3': 768, 'b4': 768, 'b5': 768,
-        # }[phi]
-        # self.decode_head = SegFormerHead(num_classes, self.in_channels, self.embedding_dim)
+        model_dict = dict(
+            decoder_params=dict(
+                embed_dims=256,
+                embed_cfg=dict(type='mlp', act_cfg=None, norm_cfg=None),
+                embed_neck_cfg=dict(type='mlp', act_cfg=None, norm_cfg=None),
+                fusion_cfg=dict(
+                    type='aspp',
+                    sep=True,
+                    dilations=(1, 6, 12, 18),
+                    pool=False,
+                    align_corners=False,
+                    act_cfg=dict(type='ReLU'),
+                    norm_cfg=dict(type='BN', requires_grad=True))))
 
+        self.channels = 256
+        self.in_index = [0, 1, 2, 3]
+        self.align_corners = False
+        self.dropout_ratio=0.1
+        self.num_classes=num_classes
+
+        decoder_params = model_dict['decoder_params']
+        embed_dims = decoder_params['embed_dims']
+        if isinstance(embed_dims, int):
+            embed_dims = [embed_dims] * len(self.in_index)
+        embed_cfg = decoder_params['embed_cfg']
+        embed_neck_cfg = decoder_params['embed_neck_cfg']
+        self.embed_layers = {}
+        for i, in_channels, embed_dim in zip(self.in_index, self.in_channels,
+                                             embed_dims):
+            if i == self.in_index[-1]:
+                self.embed_layers[str(i)] = build_layer(
+                    in_channels, embed_dim, **embed_neck_cfg)
+            else:
+                self.embed_layers[str(i)] = build_layer(
+                    in_channels, embed_dim, **embed_cfg)
+        self.embed_layers = nn.ModuleDict(self.embed_layers)
+
+        fusion_cfg = decoder_params['fusion_cfg']
         self.layer5_list = nn.ModuleList()
         if stage == 'stage1':
             for i in range(self.num_target):
                 if i != self.num_target -1:
-                    layer = self._make_pred_layer(Classifier_Module2, 512, [6, 12, 18, 24], [6, 12, 18, 24], num_classes)
+                    layer = self._make_pred_layer(Classifier_Module3, sum(embed_dims),
+                                                  self.channels, self.dropout_ratio, self.num_classes, fusion_cfg)
                 else:
-                    layer = self._make_pred_layer(Classifier_Module2, 512*(self.num_target -2), [6, 12, 18, 24], [6, 12, 18, 24], num_classes) ## ensemble
+                    layer = self._make_pred_layer(Classifier_Module3, sum(embed_dims),
+                                                  self.channels*(self.num_target -2), self.dropout_ratio, self.num_classes, fusion_cfg) ## ensemble
                 self.layer5_list.append(layer)
         else:
             for i in range(self.num_target):
-                layer = self._make_pred_layer(Classifier_Module2, 512, [6, 12, 18, 24], [6, 12, 18, 24], num_classes)
+                layer = self._make_pred_layer(Classifier_Module3, sum(embed_dims),
+                                              self.channels, self.dropout_ratio, self.num_classes, fusion_cfg)
                 self.layer5_list.append(layer)
 
         if self.bn_clr:
-            self.bn_pretrain = BatchNorm(512, affine=affine_par)
+            self.bn_pretrain = BatchNorm(self.channels, affine=affine_par)
 
-    def _make_pred_layer(self, block, inplanes, dilation_series, padding_series, num_classes):
-        return block(inplanes, dilation_series, padding_series, num_classes)
+    def _make_pred_layer(self, block,  embed_dims, channels, dropout_ratio, num_classes, fusion_cfg):
+        return block(embed_dims, channels, dropout_ratio, num_classes, fusion_cfg)
 
     def forward(self, x, domain_list, ssl, target_ensembel=False, ensembel=False):
-        # H, W = inputs.size(2), inputs.size(3)
-        # x = self.backbone.forward(inputs)
-        #
-        #
-        # x = self.decode_head.forward(x)
-        #
-        # x = F.interpolate(x, size=(H, W), mode='bilinear', align_corners=True)
 
         if ensembel:
             if target_ensembel:
@@ -708,7 +947,23 @@ class SegFormer(nn.Module):
             else:
                 x = torch.concat(ssl[:-1], dim=1) ## the last feature is domain-agnostic
         else:
-            x = self.backbone.forward(x)[-1]
+            x = self.backbone.forward(x)
+            n, _, h, w = x[-1].shape
+            os_size = x[0].size()[2:]
+            _c = {}
+            for i in self.in_index:
+                _c[i] = self.embed_layers[str(i)](x[i])
+                if _c[i].dim() == 3:
+                    _c[i] = _c[i].permute(0, 2, 1).contiguous() \
+                        .reshape(n, -1, x[i].shape[2], x[i].shape[3])
+                if _c[i].size()[2:] != os_size:
+                    _c[i] = resize(
+                        _c[i],
+                        size=os_size,
+                        mode='bilinear',
+                        align_corners=self.align_corners)
+            x = torch.cat(list(_c.values()), dim=1)
+
             ssl.append(x)
             if self.bn_clr:
                 x = self.bn_pretrain(x)
@@ -725,6 +980,8 @@ class SegFormer(nn.Module):
         b = []
         for child in self.backbone.children():
             b.append(child)
+        for layer in self.embed_layers.children():
+            b.append(layer)
 
         for i in range(len(b)):
             for j in b[i].modules():
@@ -753,6 +1010,8 @@ class SegFormer(nn.Module):
         b = []
         for child in self.backbone.children():
             b.append(child)
+        for layer in self.embed_layers.children():
+            b.append(layer)
 
         for i in range(len(b)):
             for j in b[i].modules():
@@ -818,7 +1077,6 @@ class SegFormer(nn.Module):
         return loss
 
 
-
 def DeeplabSegFormer(BatchNorm, num_classes=7, num_target=1, freeze_bn=False, restore_from=None, initialization=None,
             bn_clr=False, stage=None):
 
@@ -826,19 +1084,6 @@ def DeeplabSegFormer(BatchNorm, num_classes=7, num_target=1, freeze_bn=False, re
 
     if freeze_bn:
         model.apply(freeze_bn_func)
-    # if initialization is None:
-    #     # pretrain_dict = model_zoo.load_url('https://download.pytorch.org/models/vgg16_bn-6c64b313.pth')
-    #     pretrain_dict = model_zoo.load_url('https://download.pytorch.org/models/vgg16-397923af.pth')
-    # else:
-    #     pretrain_dict = torch.load(initialization)['state_dict']
-    #
-    # model_dict = {}
-    # state_dict = model.state_dict()
-    # for k, v in pretrain_dict.items():
-    #     if k in state_dict:
-    #         model_dict[k] = v
-    # state_dict.update(model_dict)
-    # model.load_state_dict(state_dict)
 
     if restore_from is not None:
         checkpoint = torch.load(restore_from)['SegFormer']["model_state"]

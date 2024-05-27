@@ -27,7 +27,7 @@ class CustomModel():
         self.best_iou = -100
         self.nets = []
         self.nets_DP = []
-        self.default_gpu = 0  ##########################
+        self.default_gpu = 1  ##########################
         self.num_target = len(opt.tgt_dataset_list)
         self.domain_id = -1
         if opt.bn == 'sync_bn':
@@ -43,13 +43,12 @@ class CustomModel():
         self.best_iou = 0
         if self.opt.stage == 'stage1' and opt.norepeat == False:
             # self.BaseNet = Deeplab(BatchNorm, num_classes=self.class_numbers, num_target=len(opt.tgt_dataset_list) + 2,
-            #                        freeze_bn=False, restore_from=restore_from, stage=self.opt.stage)
+            #                        freeze_bn=False, restore_from=restore_from, stage=self.opt.stage) ## Res101 backbone
             self.BaseNet = DeeplabVGG(BatchNorm, num_classes=self.class_numbers, num_target=len(opt.tgt_dataset_list) + 2,
-                                   freeze_bn=False, restore_from=restore_from, stage=self.opt.stage)
-
+                                   freeze_bn=False, restore_from=restore_from, stage=self.opt.stage) ## VGG backbone
             # self.BaseNet = DeeplabSegFormer(BatchNorm, num_classes=self.class_numbers,
             #                           num_target=len(opt.tgt_dataset_list) + 2,
-            #                           freeze_bn=False, restore_from=restore_from, stage=self.opt.stage)
+            #                           freeze_bn=False, restore_from=restore_from, stage=self.opt.stage) ## transformer backbone
 
         else:
             # self.BaseNet = Deeplab(BatchNorm, num_classes=self.class_numbers, num_target=len(opt.tgt_dataset_list),
