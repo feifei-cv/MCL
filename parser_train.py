@@ -7,8 +7,8 @@ def parser_(parser):
     parser.add_argument('--root', type=str, default=str(project_root), help='root path')
     parser.add_argument('--model_name', type=str, default='deeplabv2', help='deeplabv2')
     parser.add_argument('--name', type=str, default='warmup_G2CI', help='pretrain source model')
-    parser.add_argument('--lr', type=float, default=0.00025) #1
-    parser.add_argument('--bs', type=int, default=4)
+    parser.add_argument('--lr', type=float, default=0.00025)
+    parser.add_argument('--bs', type=int, default=4) #2 for segFormer
     parser.add_argument('--freeze_bn', action='store_true')
     parser.add_argument('--train_iters', type=int, default=60000)
     parser.add_argument('--bn', type=str, default='sync_bn', help='sync_bn|bn|gn|adabn')
@@ -63,6 +63,6 @@ def relative_path_to_absolute_path(opt):
     opt.src_rootpath = os.path.join(opt.root, opt.src_rootpath)
     for i in range(len(opt.tgt_dataset_list)):
         opt.tgt_rootpath_list[i] = os.path.join(opt.root, opt.tgt_rootpath_list[i])
-    opt.path_soft = os.path.join(opt.root, 'Code/MST/Pseudo', opt.name)
+    opt.path_soft = os.path.join(opt.root, 'Code/MST/logs/Pseudo', opt.name)
     opt.logdir = os.path.join(opt.root, 'Code/MST', 'logs', opt.name)
     return opt
