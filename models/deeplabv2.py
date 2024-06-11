@@ -7,7 +7,6 @@ import torch
 import numpy as np
 from models.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 import warnings
-from functools import partial
 from torchvision import models
 affine_par = True
 
@@ -442,10 +441,7 @@ def Deeplab(BatchNorm, num_classes=7, num_target=1, freeze_bn=False, restore_fro
                 model_dict[k] = v
         state_dict.update(model_dict)
         model.load_state_dict(state_dict)
-        # checkpoint = torch.load(restore_from)
-        # model.load_state_dict(checkpoint['ResNet101']["model_state"])
-        # #model.load_state_dict(checkpoint['ema'])
-        
+
     return model
 
 
@@ -642,9 +638,6 @@ def DeeplabVGG(BatchNorm, num_classes=7, num_target=1, freeze_bn=False, restore_
                 model_dict[k] = v
         state_dict.update(model_dict)
         model.load_state_dict(state_dict)
-        # checkpoint = torch.load(restore_from)
-        # model.load_state_dict(checkpoint['ResNet101']["model_state"])
-        # #model.load_state_dict(checkpoint['ema'])
 
     return model
 
@@ -924,8 +917,8 @@ class SegFormer(nn.Module):
                     layer = self._make_pred_layer(Classifier_Module3, sum(embed_dims),
                                                   self.channels, self.dropout_ratio, self.num_classes, fusion_cfg)
                 else:
-                    layer = self._make_pred_layer(Classifier_Module3, sum(embed_dims),
-                                                  self.channels*(self.num_target -2), self.dropout_ratio, self.num_classes, fusion_cfg) ## ensemble
+                    layer = self._make_pred_layer(Classifier_Module3, sum(embed_dims)*(self.num_target -2),
+                                                  self.channels, self.dropout_ratio, self.num_classes, fusion_cfg) ## ensemble
                 self.layer5_list.append(layer)
         else:
             for i in range(self.num_target):
@@ -978,10 +971,8 @@ class SegFormer(nn.Module):
     def get_1x_lr_params(self):
 
         b = []
-        for child in self.backbone.children():
-            b.append(child)
-        for layer in self.embed_layers.children():
-            b.append(layer)
+        b.append(self.backbone)
+        b.append(self.embed_layers)
 
         for i in range(len(b)):
             for j in b[i].modules():
@@ -997,7 +988,6 @@ class SegFormer(nn.Module):
         if self.bn_clr:
             b.append(self.bn_pretrain.parameters())
 
-            # b.append(self.layer5.parameters())
         for layer in self.layer5_list:
             b.append(layer.parameters())
 
@@ -1008,10 +998,8 @@ class SegFormer(nn.Module):
     def get_1x_lr_params_new(self):
 
         b = []
-        for child in self.backbone.children():
-            b.append(child)
-        for layer in self.embed_layers.children():
-            b.append(layer)
+        b.append(self.backbone)
+        b.append(self.embed_layers)
 
         for i in range(len(b)):
             for j in b[i].modules():
@@ -1020,12 +1008,13 @@ class SegFormer(nn.Module):
                     jj += 1
                     if k.requires_grad:
                         yield k
+
         b1 = []
         if self.bn_clr:
             b1.append(self.bn_pretrain.parameters())
 
         for layer in self.layer5_list:
-            if layer != self.layer5_list[-2]:  ## -1
+            if layer != self.layer5_list[-2]: ## -1
                 b1.append(layer.parameters())
 
         for j in range(len(b1)):
@@ -1035,8 +1024,6 @@ class SegFormer(nn.Module):
     def get_10x_lr_params_new(self):
 
         b = []
-
-        # b.append(self.layer5.parameters())
         layer = self.layer5_list[-2]  ##-1
         b.append(layer.parameters())
 
@@ -1077,6 +1064,7 @@ class SegFormer(nn.Module):
         return loss
 
 
+
 def DeeplabSegFormer(BatchNorm, num_classes=7, num_target=1, freeze_bn=False, restore_from=None, initialization=None,
             bn_clr=False, stage=None):
 
@@ -1094,10 +1082,8 @@ def DeeplabSegFormer(BatchNorm, num_classes=7, num_target=1, freeze_bn=False, re
                 model_dict[k] = v
         state_dict.update(model_dict)
         model.load_state_dict(state_dict)
-        # checkpoint = torch.load(restore_from)
-        # model.load_state_dict(checkpoint['ResNet101']["model_state"])
-        # #model.load_state_dict(checkpoint['ema'])
 
     return model
+
 
 
