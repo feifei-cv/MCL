@@ -42,30 +42,28 @@ class CustomModel():
             restore_from = opt.resume_path
         self.best_iou = 0
         if self.opt.stage == 'stage1' and opt.norepeat == False:
-            # self.BaseNet = Deeplab(BatchNorm, num_classes=self.class_numbers, num_target=len(opt.tgt_dataset_list) + 2,
-            #                        freeze_bn=False, restore_from=restore_from, stage=self.opt.stage) ## Res101 backbone
-            self.BaseNet = DeeplabVGG(BatchNorm, num_classes=self.class_numbers, num_target=len(opt.tgt_dataset_list) + 2,
-                                   freeze_bn=False, restore_from=restore_from, stage=self.opt.stage) ## VGG backbone
+            self.BaseNet = Deeplab(BatchNorm, num_classes=self.class_numbers, num_target=len(opt.tgt_dataset_list) + 2,
+                                   freeze_bn=False, restore_from=restore_from, stage=self.opt.stage) ## Res101 backbone
+            # self.BaseNet = DeeplabVGG(BatchNorm, num_classes=self.class_numbers, num_target=len(opt.tgt_dataset_list) + 2,
+            #                        freeze_bn=False, restore_from=restore_from, stage=self.opt.stage) ## VGG backbone
             # self.BaseNet = DeeplabSegFormer(BatchNorm, num_classes=self.class_numbers,
             #                           num_target=len(opt.tgt_dataset_list) + 2,
             #                           freeze_bn=False, restore_from=restore_from, stage=self.opt.stage) ## transformer backbone
-
         else:
-            # self.BaseNet = Deeplab(BatchNorm, num_classes=self.class_numbers, num_target=len(opt.tgt_dataset_list),
-            #                        freeze_bn=False, restore_from=restore_from, stage=self.opt.stage)
-
+            self.BaseNet = Deeplab(BatchNorm, num_classes=self.class_numbers, num_target=len(opt.tgt_dataset_list),
+                                   freeze_bn=False, restore_from=restore_from, stage=self.opt.stage)
             # self.BaseNet = DeeplabVGG(BatchNorm, num_classes=self.class_numbers, num_target=len(opt.tgt_dataset_list),
             #                        freeze_bn=False, restore_from=restore_from, stage=self.opt.stage)
-            self.BaseNet = DeeplabSegFormer(BatchNorm, num_classes=self.class_numbers,
-                                            num_target=len(opt.tgt_dataset_list) + 2,
-                                            freeze_bn=False, restore_from=restore_from, stage=self.opt.stage)
+            # self.BaseNet = DeeplabSegFormer(BatchNorm, num_classes=self.class_numbers,
+            #                                 num_target=len(opt.tgt_dataset_list),
+            #                                 freeze_bn=False, restore_from=restore_from, stage=self.opt.stage)
 
         logger.info('the backbone is {}'.format(opt.model_name))
         self.nets.extend([self.BaseNet])
         self.optimizers = []
         self.schedulers = []
         optimizer_cls = torch.optim.SGD
-        optimizer_params = {'lr': opt.lr, 'weight_decay': 1e-4, 'momentum': 0.9}  ##2
+        optimizer_params = {'lr': opt.lr, 'weight_decay': 1e-4, 'momentum': 0.9}
         if self.opt.stage == 'warm_up':
             self.net_D_list = []
             self.net_D_DP_list = []
@@ -217,7 +215,7 @@ class CustomModel():
             masks = torch.zeros(threshold_arg.size()).to(device).bool()
             for cl in range(class_num):
                 mask1 = (threshold_arg == cl)
-                mask2 = (predicted_entropy < np.maximum(0.25,thres[cl])).unsqueeze(dim=1) ## Eq.(6) 0.2, 0.1，0.3，0.15
+                mask2 = (predicted_entropy < np.maximum(0.25,thres[cl])).unsqueeze(dim=1) ## Eq.(6) 0.2, 0.1，0.3，0.15 0.25
                 mask = mask1*mask2
                 masks = masks | mask
             threshold_arg[~masks] = 250
@@ -303,8 +301,11 @@ class CustomModel():
             mask = (teacher != 250).float()
             loss_kd = (loss_kd * mask).sum() / mask.sum()
             loss_kd /= self.num_target
+
+            # loss_kd = torch.zeros(1) ### no knowledge distillation
             #### total loss
-            loss += loss_kd + loss_CTS_all  + (self.opt.ratio * loss_CTS_transfered_all + 0.05*loss_ensemble_all) ## 0.01
+            loss += loss_kd + loss_CTS_all  + (self.opt.ratio * loss_CTS_transfered_all + 0.05*loss_ensemble_all) ## 0.05 for segformer
+            # loss += loss_CTS_all  + (self.opt.ratio * loss_CTS_transfered_all + 0.05*loss_ensemble_all)
             loss.backward()
 
         self.BaseOpti.step()
