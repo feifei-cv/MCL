@@ -42,7 +42,7 @@ def train(opt, logger, opt_pl):
     time_meter = averageMeter()
     for i in range(len(opt.tgt_dataset_list)):
         running_metrics_val_list.append(runningScore(opt.n_class))
-    #
+    # #
     if opt.stage == 'stage1':
         generate_pl(model, logger, datasets_pl, device, opt_pl)  ###
 
@@ -173,8 +173,7 @@ def generate(valid_loader_list, device, model, opt):
 
     num_target = len(opt.tgt_dataset_list)
     for i in range(num_target):
-        ori_LP = os.path.join(opt.root, 'Code/MST', opt.save_path, opt.name, opt.tgt_dataset_list[i])
-
+        ori_LP = os.path.join(opt.root, 'Code/MST/logs', opt.save_path, opt.name, opt.tgt_dataset_list[i]) ###
         if not os.path.exists(ori_LP):
             os.makedirs(ori_LP)
         sm = torch.nn.Softmax(dim=1)
