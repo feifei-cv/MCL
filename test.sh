@@ -17,4 +17,7 @@ python test.py --bs 1 --name stage1_C2MI --src_dataset cityscapes --src_rootpath
 python test.py --bs 1 --name stage1_I2CM --src_dataset idd --src_rootpath Dataset/IDD_Segmentation --tgt_dataset cityscapes mapillary --tgt_rootpath Dataset/Cityscapes Dataset/Mapillary  --resume_path logs/stage1_I2CM/from_idd_to_2_on_deeplabv2_best_model.pkl
 python test.py --bs 1 --name stage1_M2CI --src_dataset mapillary --src_rootpath Dataset/Mapillary --tgt_dataset cityscapes idd --tgt_rootpath Dataset/Cityscapes Dataset/IDD_Segmentation  --resume_path logs/stage1_M2CI/from_mapillary_to_2_on_deeplabv2_best_model.pkl
 
+python test.py --bs 1 --name stage1_C2MI_19 --n_class 19 --img_size "1024,512" --resize 1024 --rcrop "512,256" --stage stage1 --src_dataset cityscapes --src_rootpath Dataset/Cityscapes --tgt_dataset mapillary idd --tgt_rootpath Dataset/Mapillary Dataset/IDD_Segmentation --resume_path logs/stage1_C2MI_19/from_cityscapes_to_2_on_deeplabv2_best_model.pkl
+
+
 
