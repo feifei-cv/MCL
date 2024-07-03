@@ -142,7 +142,7 @@ class IDD_loader(BaseDataset):
 
         img = Image.open(img_path)
         lbl = Image.open(lbl_path)
-        img = img.resize(self.img_size, Image.BILINEAR)
+        img = img.resize(self.img_size, Image.BILINEAR) ## 1920, 1080
         lbl = lbl.resize(self.img_size, Image.NEAREST)
         
         img = np.array(img, dtype=np.uint8)
