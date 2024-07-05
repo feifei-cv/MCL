@@ -111,7 +111,7 @@ class IDD_loader(BaseDataset):
             self.files = self.files * int(np.ceil(float(opt.train_iters) / len(self.files)))
             
 
-        self.mapping = np.array(self.info['label2train'], dtype=np.int8)
+        self.mapping = np.array(self.info['label2train'], dtype=np.int16) ## =np.int8
         self.map_vector = np.zeros((self.mapping.shape[0],), dtype=np.uint8)
         for source_label, target_label in self.mapping:
             self.map_vector[source_label] = target_label

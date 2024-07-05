@@ -645,172 +645,7 @@ def DeeplabVGG(BatchNorm, num_classes=7, num_target=1, freeze_bn=False, restore_
     return model
 
 
-
-###### For Segformer backbone, Adapt from DAFormer
-# def resize(input,
-#            size=None,
-#            scale_factor=None,
-#            mode='nearest',
-#            align_corners=None,
-#            warning=True):
-#     if warning:
-#         if size is not None and align_corners:
-#             input_h, input_w = tuple(int(x) for x in input.shape[2:])
-#             output_h, output_w = tuple(int(x) for x in size)
-#             if output_h > input_h or output_w > output_h:
-#                 if ((output_h > 1 and output_w > 1 and input_h > 1
-#                      and input_w > 1) and (output_h - 1) % (input_h - 1)
-#                         and (output_w - 1) % (input_w - 1)):
-#                     warnings.warn(
-#                         f'When align_corners={align_corners}, '
-#                         'the output would more aligned if '
-#                         f'input size {(input_h, input_w)} is `x+1` and '
-#                         f'out size {(output_h, output_w)} is `nx+1`')
-#     return F.interpolate(input, size, scale_factor, mode, align_corners)
-#
-#
-# class ASPPModule(nn.ModuleList):
-#     """Atrous Spatial Pyramid Pooling (ASPP) Module.
-#
-#     Args:
-#         dilations (tuple[int]): Dilation rate of each layer.
-#         in_channels (int): Input channels.
-#         channels (int): Channels after modules, before conv_seg.
-#         conv_cfg (dict|None): Config of conv layers.
-#         norm_cfg (dict|None): Config of norm layers.
-#         act_cfg (dict): Config of activation layers.
-#     """
-#
-#     def __init__(self, dilations, in_channels, channels, conv_cfg, norm_cfg,
-#                  act_cfg):
-#         super(ASPPModule, self).__init__()
-#         self.dilations = dilations
-#         self.in_channels = in_channels
-#         self.channels = channels
-#         self.conv_cfg = conv_cfg
-#         self.norm_cfg = norm_cfg
-#         self.act_cfg = act_cfg
-#         for dilation in dilations:
-#             self.append(
-#                 ConvModule(
-#                     self.in_channels,
-#                     self.channels,
-#                     1 if dilation == 1 else 3,
-#                     dilation=dilation,
-#                     padding=0 if dilation == 1 else dilation,
-#                     conv_cfg=self.conv_cfg,
-#                     norm_cfg=self.norm_cfg,
-#                     act_cfg=self.act_cfg))
-#
-#     def forward(self, x):
-#         """Forward function."""
-#         aspp_outs = []
-#         for aspp_module in self:
-#             aspp_outs.append(aspp_module(x))
-#
-#         return aspp_outs
-#
-#
-# class DepthwiseSeparableASPPModule(ASPPModule):
-#     """Atrous Spatial Pyramid Pooling (ASPP) Module with depthwise separable
-#     conv."""
-#
-#     def __init__(self, **kwargs):
-#         super(DepthwiseSeparableASPPModule, self).__init__(**kwargs)
-#         for i, dilation in enumerate(self.dilations):
-#             if dilation > 1:
-#                 self[i] = DepthwiseSeparableConvModule(
-#                     self.in_channels,
-#                     self.channels,
-#                     3,
-#                     dilation=dilation,
-#                     padding=dilation,
-#                     norm_cfg=self.norm_cfg,
-#                     act_cfg=self.act_cfg)
-#
-#
-# class ASPPWrapper(nn.Module):
-#
-#     def __init__(self,
-#                  in_channels,
-#                  channels,
-#                  sep,
-#                  dilations,
-#                  pool,
-#                  norm_cfg,
-#                  act_cfg,
-#                  align_corners,
-#                  context_cfg=None):
-#         super(ASPPWrapper, self).__init__()
-#         assert isinstance(dilations, (list, tuple))
-#         self.dilations = dilations
-#         self.align_corners = align_corners
-#         if pool:
-#             self.image_pool = nn.Sequential(
-#                 nn.AdaptiveAvgPool2d(1),
-#                 ConvModule(
-#                     in_channels,
-#                     channels,
-#                     1,
-#                     norm_cfg=norm_cfg,
-#                     act_cfg=act_cfg))
-#         else:
-#             self.image_pool = None
-#         if context_cfg is not None:
-#             self.context_layer = build_layer(in_channels, channels,
-#                                              **context_cfg)
-#         else:
-#             self.context_layer = None
-#         ASPP = {True: DepthwiseSeparableASPPModule, False: ASPPModule}[sep]
-#         self.aspp_modules = ASPP(
-#             dilations=dilations,
-#             in_channels=in_channels,
-#             channels=channels,
-#             norm_cfg=norm_cfg,
-#             conv_cfg=None,
-#             act_cfg=act_cfg)
-#         self.bottleneck = ConvModule(
-#             (len(dilations) + int(pool) + int(bool(context_cfg))) * channels,
-#             channels,
-#             kernel_size=3,
-#             padding=1,
-#             norm_cfg=norm_cfg,
-#             act_cfg=act_cfg)
-#
-#     def forward(self, x):
-#         """Forward function."""
-#         aspp_outs = []
-#         if self.image_pool is not None:
-#             aspp_outs.append(
-#                 resize(
-#                     self.image_pool(x),
-#                     size=x.size()[2:],
-#                     mode='bilinear',
-#                     align_corners=self.align_corners))
-#         if self.context_layer is not None:
-#             aspp_outs.append(self.context_layer(x))
-#         aspp_outs.extend(self.aspp_modules(x))
-#         aspp_outs = torch.cat(aspp_outs, dim=1)
-#
-#         output = self.bottleneck(aspp_outs)
-#         return output
-#
-#
-# class MLP(nn.Module):
-#     """Linear Embedding."""
-#
-#     def __init__(self, input_dim=2048, embed_dim=768):
-#         super().__init__()
-#         self.proj = nn.Linear(input_dim, embed_dim)
-#
-#     def forward(self, x):
-#         x = x.flatten(2).transpose(1, 2).contiguous()
-#         x = self.proj(x)
-#         return x
-#
-
-
-
+#### For segformer backbone
 def build_layer(in_channels, out_channels, type, **kwargs):
     if type == 'id':
         return nn.Identity()
@@ -866,7 +701,7 @@ class SegFormer(nn.Module):
         self.num_classes=num_classes
         self.align_corners = False
         self.norm_cfg = dict(type='BN', requires_grad=True)
-        embed_dims = 512 ##256 for segformer
+        embed_dims = 256
         if isinstance(embed_dims, int):
             embed_dims = [embed_dims] * len(self.in_index)
 
@@ -885,7 +720,6 @@ class SegFormer(nn.Module):
         self.embed_layers = nn.ModuleDict(self.embed_layers)
 
         fusion_cfg = dict(
-            # _delete_=True, ###
             align_corners=self.align_corners,
             type='aspp',
             sep=True,
@@ -927,26 +761,26 @@ class SegFormer(nn.Module):
         else:
             x = self.backbone.forward(x)
 
-            n, _, h, w = x[-1].shape
-            os_size = x[0].size()[2:]
-            _c = {}
-            for i in self.in_index:
-                _c[i] = self.embed_layers[str(i)](x[i])
-                if _c[i].dim() == 3:
-                    _c[i] = _c[i].permute(0, 2, 1).contiguous() \
-                        .reshape(n, -1, x[i].shape[2], x[i].shape[3])
-                if _c[i].size()[2:] != os_size:
-                    _c[i] = resize(
-                        _c[i],
-                        size=os_size,
-                        mode='bilinear',
-                        align_corners=self.align_corners)
-            x = torch.cat(list(_c.values()), dim=1)
-            # ### 无MLP
-            # inputs = [x[i] for i in self.in_index]
-            # upsampled_inputs = [resize(input=x, size=inputs[0].shape[2:],
-            #                            mode='bilinear', align_corners=self.align_corners) for x in inputs]
-            # x = torch.cat(upsampled_inputs, dim=1)
+            # n, _, h, w = x[-1].shape
+            # os_size = x[0].size()[2:]
+            # _c = {}
+            # for i in self.in_index:
+            #     _c[i] = self.embed_layers[str(i)](x[i])
+            #     if _c[i].dim() == 3:
+            #         _c[i] = _c[i].permute(0, 2, 1).contiguous() \
+            #             .reshape(n, -1, x[i].shape[2], x[i].shape[3])
+            #     if _c[i].size()[2:] != os_size:
+            #         _c[i] = resize(
+            #             _c[i],
+            #             size=os_size,
+            #             mode='bilinear',
+            #             align_corners=self.align_corners)
+            # x = torch.cat(list(_c.values()), dim=1)
+            ####
+            inputs = [x[i] for i in self.in_index]
+            upsampled_inputs = [resize(input=x, size=inputs[0].shape[2:],
+                                       mode='bilinear', align_corners=self.align_corners) for x in inputs]
+            x = torch.cat(upsampled_inputs, dim=1)
 
             ssl.append(x)
             if self.bn_clr:

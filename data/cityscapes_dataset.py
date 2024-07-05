@@ -126,7 +126,7 @@ class Cityscapes_loader(BaseDataset):
         if self.n_classes == 7:
             INFO_PATH_7 = opt.root + '/data/cityscapes_list/info7class.json'
             self.info = json_load(INFO_PATH_7)
-            self.mapping = np.array(self.info['label2train'], dtype=np.int8)
+            self.mapping = np.array(self.info['label2train'], dtype=np.int16) ##=np.int8
             self.class_map = np.zeros((self.mapping.shape[0],), dtype=np.uint8)
             for source_label, target_label in self.mapping:
                 self.class_map[source_label] = target_label

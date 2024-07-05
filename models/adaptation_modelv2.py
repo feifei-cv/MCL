@@ -49,6 +49,11 @@ class CustomModel():
             self.BaseNet = DeeplabSegFormer(BatchNorm, num_classes=self.class_numbers,
                                       num_target=len(opt.tgt_dataset_list) + 2,
                                       freeze_bn=False, restore_from=restore_from, stage=self.opt.stage) ## transformer backbone
+            ##### for segFormer backbone
+            optimizer_cls = torch.optim.AdamW
+            opt.lr = 0.00006
+            optimizer_params = {'lr': opt.lr, 'weight_decay': 1e-2, 'betas': (0.9, 0.999)}
+
         else:
             # self.BaseNet = Deeplab(BatchNorm, num_classes=self.class_numbers, num_target=len(opt.tgt_dataset_list),
             #                        freeze_bn=False, restore_from=restore_from, stage=self.opt.stage)
@@ -57,16 +62,13 @@ class CustomModel():
             self.BaseNet = DeeplabSegFormer(BatchNorm, num_classes=self.class_numbers,
                                             num_target=len(opt.tgt_dataset_list),
                                             freeze_bn=False, restore_from=restore_from, stage=self.opt.stage)
+            optimizer_cls = torch.optim.SGD
+            optimizer_params = {'lr': opt.lr, 'weight_decay': 1e-4, 'momentum': 0.9}
 
         logger.info('the backbone is {}'.format(opt.model_name))
         self.nets.extend([self.BaseNet])
         self.optimizers = []
         self.schedulers = []
-        # optimizer_cls = torch.optim.SGD
-        # optimizer_params = {'lr': opt.lr, 'weight_decay': 1e-4, 'momentum': 0.9}
-        ### for segFormer backbone
-        optimizer_cls = torch.optim.AdamW
-        optimizer_params = {'lr': opt.lr, 'weight_decay': 1e-2, 'betas':(0.9, 0.999)}
 
         if self.opt.stage == 'warm_up':
             self.net_D_list = []
