@@ -37,6 +37,8 @@ def train(opt, logger, opt_pl):
         datasets_pl = create_dataset(opt_pl, logger)
     if opt.model_name == 'deeplabv2':
         model = adaptation_modelv2.CustomModel(opt, logger)
+
+    logger.info(opt)
     # Setup Metrics
     running_metrics_val_list = []
     time_meter = averageMeter()
@@ -223,7 +225,6 @@ if __name__ == "__main__":
     temp_path = '/'.join(temp_path)
     temp_path += '/'+opt_pl.name
     opt_pl.path_soft = temp_path
-    logger.info(opt)
     train(opt, logger, opt_pl)
 
 

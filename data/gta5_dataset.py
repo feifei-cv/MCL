@@ -142,9 +142,9 @@ class GTA5_loader(BaseDataset):
         img = Image.open(img_path)
         lbl = Image.open(lbl_path)
 
-        img = img.resize(self.img_size, Image.BILINEAR) ### 1280, 720
+        img = img.resize(self.img_size, Image.BILINEAR) ### 1052,1914
         lbl = lbl.resize(self.img_size, Image.NEAREST)
-        img = np.asarray(img, dtype=np.uint8)
+        img = np.asarray(img, dtype=np.uint8) ## 320,640
         lbl = np.asarray(lbl, dtype=np.uint8)
 
         if self.n_classes == 7:

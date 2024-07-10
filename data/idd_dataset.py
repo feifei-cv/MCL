@@ -117,7 +117,7 @@ class IDD_loader(BaseDataset):
 
     def get_metadata(self, name):
         img_file = self.root / 'leftImg8bit' / self.set / name
-        if self.label_folder is not '':
+        if self.label_folder != '':
             label_file = self.label_folder + '/' + (name.split('/')[1])
         else:
             label_name = name.replace("leftImg8bit", "gtFine_labelids")
@@ -141,7 +141,7 @@ class IDD_loader(BaseDataset):
 
         img = Image.open(img_path)
         lbl = Image.open(lbl_path)
-        img = img.resize(self.img_size, Image.BILINEAR) ## 1920, 1080
+        img = img.resize(self.img_size, Image.BILINEAR) ## 964,1280
         lbl = lbl.resize(self.img_size, Image.NEAREST)
         
         img = np.array(img, dtype=np.uint8)

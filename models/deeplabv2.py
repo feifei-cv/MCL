@@ -8,6 +8,7 @@ import numpy as np
 from models.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 import warnings
 from torchvision import models
+
 affine_par = True
 
 # from mmcv.cnn import ConvModule, DepthwiseSeparableConvModule
@@ -16,6 +17,7 @@ from models.daformer.aspp_head import ASPPWrapper
 from models.daformer.mlp import MLP
 
 from .backbone import get_mit_backbone
+
 
 ######### For ResNet101 backbone
 def outS(i):
@@ -46,7 +48,6 @@ class BasicBlock(nn.Module):
         self.stride = stride
 
     def forward(self, x):
-
         residual = x
         out = self.conv1(x)
         out = self.bn1(out)
@@ -62,8 +63,8 @@ class BasicBlock(nn.Module):
 
 
 class Bottleneck(nn.Module):
-
     expansion = 4
+
     def __init__(self, inplanes, planes, stride=1, dilation=1, downsample=None, BatchNorm=None, num_target=2):
         super(Bottleneck, self).__init__()
         self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1, stride=stride, bias=False)  # change
@@ -113,7 +114,8 @@ class Classifier_Module(nn.Module):
         self.conv2d_list = nn.ModuleList()
         for dilation, padding in zip(dilation_series, padding_series):
             self.conv2d_list.append(
-                nn.Conv2d(inplanes, num_classes, kernel_size=3, stride=1, padding=padding, dilation=dilation, bias=True))
+                nn.Conv2d(inplanes, num_classes, kernel_size=3, stride=1, padding=padding, dilation=dilation,
+                          bias=True))
 
         for m in self.conv2d_list:
             m.weight.data.normal_(0, 0.01)
@@ -126,15 +128,16 @@ class Classifier_Module(nn.Module):
 
 
 class SEBlock(nn.Module):
-    def __init__(self, inplanes, r = 16):
+    def __init__(self, inplanes, r=16):
         super(SEBlock, self).__init__()
-        self.global_pool = nn.AdaptiveAvgPool2d((1,1))
+        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
         self.se = nn.Sequential(
-                nn.Linear(inplanes, inplanes//r),
-                nn.ReLU(inplace=True),
-                nn.Linear(inplanes//r, inplanes),
-                nn.Sigmoid()
+            nn.Linear(inplanes, inplanes // r),
+            nn.ReLU(inplace=True),
+            nn.Linear(inplanes // r, inplanes),
+            nn.Sigmoid()
         )
+
     def forward(self, x):
         xx = self.global_pool(x)
         xx = xx.view(xx.size(0), xx.size(1))
@@ -143,36 +146,38 @@ class SEBlock(nn.Module):
 
 
 class Classifier_Module2(nn.Module):
-    def __init__(self, inplanes, dilation_series, padding_series, num_classes, droprate = 0.1, use_se = True):
+    def __init__(self, inplanes, dilation_series, padding_series, num_classes, droprate=0.1, use_se=True):
         super(Classifier_Module2, self).__init__()
         self.conv2d_list = nn.ModuleList()
         self.conv2d_list.append(
-                nn.Sequential(*[
+            nn.Sequential(*[
                 nn.Conv2d(inplanes, 256, kernel_size=1, stride=1, padding=0, dilation=1, bias=True),
-                nn.GroupNorm(num_groups=32, num_channels=256, affine = True),
-                nn.ReLU(inplace=True) ]))
+                nn.GroupNorm(num_groups=32, num_channels=256, affine=True),
+                nn.ReLU(inplace=True)]))
 
         for dilation, padding in zip(dilation_series, padding_series):
-            #self.conv2d_list.append(
+            # self.conv2d_list.append(
             #    nn.BatchNorm2d(inplanes))
             self.conv2d_list.append(
                 nn.Sequential(*[
-                #nn.ReflectionPad2d(padding),
-                nn.Conv2d(inplanes, 256, kernel_size=3, stride=1, padding=padding, dilation=dilation, bias=True), 
-                nn.GroupNorm(num_groups=32, num_channels=256, affine = True),
-                nn.ReLU(inplace=True) ]))
- 
+                    # nn.ReflectionPad2d(padding),
+                    nn.Conv2d(inplanes, 256, kernel_size=3, stride=1, padding=padding, dilation=dilation, bias=True),
+                    nn.GroupNorm(num_groups=32, num_channels=256, affine=True),
+                    nn.ReLU(inplace=True)]))
+
         if use_se:
             self.bottleneck = nn.Sequential(*[SEBlock(256 * (len(dilation_series) + 1)),
-                        nn.Conv2d(256 * (len(dilation_series) + 1), 256, kernel_size=3, stride=1, padding=1, dilation=1, bias=True) ,
-                        nn.GroupNorm(num_groups=32, num_channels=256, affine = True) ])
+                                              nn.Conv2d(256 * (len(dilation_series) + 1), 256, kernel_size=3, stride=1,
+                                                        padding=1, dilation=1, bias=True),
+                                              nn.GroupNorm(num_groups=32, num_channels=256, affine=True)])
         else:
             self.bottleneck = nn.Sequential(*[
-                nn.Conv2d(256 * (len(dilation_series) + 1), 256, kernel_size=3, stride=1, padding=1, dilation=1, bias=True) ,
-                nn.GroupNorm(num_groups=32, num_channels=256, affine = True) ])
+                nn.Conv2d(256 * (len(dilation_series) + 1), 256, kernel_size=3, stride=1, padding=1, dilation=1,
+                          bias=True),
+                nn.GroupNorm(num_groups=32, num_channels=256, affine=True)])
 
         self.head = nn.Sequential(*[nn.Dropout2d(droprate),
-            nn.Conv2d(256, num_classes, kernel_size=1, padding=0, dilation=1, bias=False) ])
+                                    nn.Conv2d(256, num_classes, kernel_size=1, padding=0, dilation=1, bias=False)])
 
         ##########init#######
         for m in self.conv2d_list:
@@ -190,7 +195,9 @@ class Classifier_Module2(nn.Module):
             elif isinstance(m, nn.Linear):
                 torch.nn.init.kaiming_normal_(m.weight.data, a=0, mode='fan_out')
                 m.bias.data.zero_()
-            elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.InstanceNorm2d) or isinstance(m, nn.GroupNorm) or isinstance(m, nn.LayerNorm):
+            elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.InstanceNorm2d) or isinstance(m,
+                                                                                                 nn.GroupNorm) or isinstance(
+                    m, nn.LayerNorm):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
@@ -201,7 +208,7 @@ class Classifier_Module2(nn.Module):
     def forward(self, x, get_feat=False):
         out = self.conv2d_list[0](x)
         for i in range(len(self.conv2d_list) - 1):
-            out = torch.cat( (out, self.conv2d_list[i+1](x)), 1)
+            out = torch.cat((out, self.conv2d_list[i + 1](x)), 1)
         out = self.bottleneck(out)
         if get_feat:
             out_dict = {}
@@ -230,23 +237,27 @@ class ResNet101(nn.Module):
 
         self.layer1 = self._make_layer(block, 64, layers[0], BatchNorm=BatchNorm, num_target=num_target)
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2, BatchNorm=BatchNorm, num_target=num_target)
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=1, dilation=2, BatchNorm=BatchNorm, num_target=num_target)
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=1, dilation=4, BatchNorm=BatchNorm, num_target=num_target)
-        #self.layer5 = self._make_pred_layer(Classifier_Module, 2048, [6, 12, 18, 24], [6, 12, 18, 24], num_classes)
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=1, dilation=2, BatchNorm=BatchNorm,
+                                       num_target=num_target)
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=1, dilation=4, BatchNorm=BatchNorm,
+                                       num_target=num_target)
+        # self.layer5 = self._make_pred_layer(Classifier_Module, 2048, [6, 12, 18, 24], [6, 12, 18, 24], num_classes)
         # self.layer5 = self._make_pred_layer(Classifier_Module2, 2048, [6, 12, 18, 24], [6, 12, 18, 24], num_classes)
         self.layer5_list = nn.ModuleList()
         if stage == 'stage1':
             for i in range(self.num_target):
-                if i != self.num_target -1:
-                    layer = self._make_pred_layer(Classifier_Module2, 2048, [6, 12, 18, 24], [6, 12, 18, 24], num_classes)
+                if i != self.num_target - 1:
+                    layer = self._make_pred_layer(Classifier_Module2, 2048, [6, 12, 18, 24], [6, 12, 18, 24],
+                                                  num_classes)
                 else:
-                    layer = self._make_pred_layer(Classifier_Module2, 2048*(self.num_target -2), [6, 12, 18, 24], [6, 12, 18, 24], num_classes) ## ensemble
+                    layer = self._make_pred_layer(Classifier_Module2, 2048 * (self.num_target - 2), [6, 12, 18, 24],
+                                                  [6, 12, 18, 24], num_classes)  ## ensemble
                 self.layer5_list.append(layer)
         else:
             for i in range(self.num_target):
                 layer = self._make_pred_layer(Classifier_Module2, 2048, [6, 12, 18, 24], [6, 12, 18, 24], num_classes)
                 self.layer5_list.append(layer)
-        
+
         if self.bn_clr:
             self.bn_pretrain = BatchNorm(2048, affine=affine_par)
         for m in self.modules():
@@ -270,7 +281,9 @@ class ResNet101(nn.Module):
         # for i in downsample._modules['1'].parameters():
         #     i.requires_grad = False
         layers = []
-        layers.append(block(self.inplanes, planes, stride, dilation=dilation, downsample=downsample, BatchNorm=BatchNorm, num_target=num_target))
+        layers.append(
+            block(self.inplanes, planes, stride, dilation=dilation, downsample=downsample, BatchNorm=BatchNorm,
+                  num_target=num_target))
         self.inplanes = planes * block.expansion
         for i in range(1, blocks):
             layers.append(block(self.inplanes, planes, dilation=dilation, BatchNorm=BatchNorm, num_target=num_target))
@@ -284,9 +297,9 @@ class ResNet101(nn.Module):
 
         if ensembel:
             if target_ensembel:
-                x = torch.concat(ssl,  dim=1) #torch.concat(torch.split(x, b//(self.num_target-2), 0), dim=1)
+                x = torch.concat(ssl, dim=1)  # torch.concat(torch.split(x, b//(self.num_target-2), 0), dim=1)
             else:
-                x = torch.concat(ssl[:-1], dim=1) ## the last feature is domain-agnostic
+                x = torch.concat(ssl[:-1], dim=1)  ## the last feature is domain-agnostic
         else:
             x = self.conv1(x)
             x = self.bn1(x)
@@ -329,9 +342,9 @@ class ResNet101(nn.Module):
 
         b = []
         if self.bn_clr:
-            b.append(self.bn_pretrain.parameters())    
-        
-        # b.append(self.layer5.parameters())
+            b.append(self.bn_pretrain.parameters())
+
+            # b.append(self.layer5.parameters())
         for layer in self.layer5_list:
             b.append(layer.parameters())
 
@@ -361,7 +374,7 @@ class ResNet101(nn.Module):
             b1.append(self.bn_pretrain.parameters())
 
         for layer in self.layer5_list:
-            if layer != self.layer5_list[-2]: ## -1
+            if layer != self.layer5_list[-2]:  ## -1
                 b1.append(layer.parameters())
 
         for j in range(len(b1)):
@@ -371,9 +384,9 @@ class ResNet101(nn.Module):
     def get_10x_lr_params_new(self):
 
         b = []
-        
+
         # b.append(self.layer5.parameters())
-        layer = self.layer5_list[-2] ##-1
+        layer = self.layer5_list[-2]  ##-1
         b.append(layer.parameters())
 
         for j in range(len(b)):
@@ -387,13 +400,13 @@ class ResNet101(nn.Module):
     def optim_parameters(self, args):
         return [{'params': self.get_1x_lr_params(), 'lr': args.learning_rate},
                 {'params': self.get_10x_lr_params(), 'lr': 10 * args.learning_rate}]
-    
+
     def adjust_learning_rate(self, args, optimizer, i):
         lr = args.learning_rate * ((1 - float(i) / args.num_steps) ** (args.power))
         optimizer.param_groups[0]['lr'] = lr
         if len(optimizer.param_groups) > 1:
-            optimizer.param_groups[1]['lr'] = lr * 10  
-            
+            optimizer.param_groups[1]['lr'] = lr * 10
+
     def CrossEntropy2d(self, predict, target, weight=None, size_average=True):
         assert not target.requires_grad
         assert predict.dim() == 4
@@ -409,18 +422,20 @@ class ResNet101(nn.Module):
         predict = predict.transpose(1, 2).transpose(2, 3).contiguous()
         predict = predict[target_mask.view(n, h, w, 1).repeat(1, 1, 1, c)].view(-1, c)
         loss = F.cross_entropy(predict, target, weight=weight, size_average=size_average)
-        return loss    
+        return loss
 
 
 def freeze_bn_func(m):
-    if m.__class__.__name__.find('BatchNorm') != -1 or isinstance(m, SynchronizedBatchNorm2d)\
-        or isinstance(m, nn.BatchNorm2d):
+    if m.__class__.__name__.find('BatchNorm') != -1 or isinstance(m, SynchronizedBatchNorm2d) \
+            or isinstance(m, nn.BatchNorm2d):
         m.weight.requires_grad = False
         m.bias.requires_grad = False
 
 
-def Deeplab(BatchNorm, num_classes=7, num_target=1, freeze_bn=False, restore_from=None, initialization=None, bn_clr=False, stage=None):
-    model = ResNet101(Bottleneck, [3, 4, 23, 3], num_classes, BatchNorm, num_target=num_target, bn_clr=bn_clr, stage=stage)
+def Deeplab(BatchNorm, num_classes=7, num_target=1, freeze_bn=False, restore_from=None, initialization=None,
+            bn_clr=False, stage=None):
+    model = ResNet101(Bottleneck, [3, 4, 23, 3], num_classes, BatchNorm, num_target=num_target, bn_clr=bn_clr,
+                      stage=stage)
     if freeze_bn:
         model.apply(freeze_bn_func)
     if initialization is None:
@@ -435,7 +450,7 @@ def Deeplab(BatchNorm, num_classes=7, num_target=1, freeze_bn=False, restore_fro
     state_dict.update(model_dict)
     model.load_state_dict(state_dict)
 
-    if restore_from is not None: 
+    if restore_from is not None:
         checkpoint = torch.load(restore_from)['ResNet101']["model_state"]
         model_dict = {}
         state_dict = model.state_dict()
@@ -466,14 +481,15 @@ class VGG(nn.Module):
         self.features = nn.Sequential(
             *([features[i] for i in range(len(features))] + [fc6, nn.ReLU(inplace=True), fc7, nn.ReLU(inplace=True)]))
 
-
         self.layer5_list = nn.ModuleList()
         if stage == 'stage1':
             for i in range(self.num_target):
-                if i != self.num_target -1:
-                    layer = self._make_pred_layer(Classifier_Module2, 1024, [6, 12, 18, 24], [6, 12, 18, 24], num_classes)
+                if i != self.num_target - 1:
+                    layer = self._make_pred_layer(Classifier_Module2, 1024, [6, 12, 18, 24], [6, 12, 18, 24],
+                                                  num_classes)
                 else:
-                    layer = self._make_pred_layer(Classifier_Module2, 1024*(self.num_target -2), [6, 12, 18, 24], [6, 12, 18, 24], num_classes) ## ensemble
+                    layer = self._make_pred_layer(Classifier_Module2, 1024 * (self.num_target - 2), [6, 12, 18, 24],
+                                                  [6, 12, 18, 24], num_classes)  ## ensemble
                 self.layer5_list.append(layer)
         else:
             for i in range(self.num_target):
@@ -487,14 +503,13 @@ class VGG(nn.Module):
     def _make_pred_layer(self, block, inplanes, dilation_series, padding_series, num_classes):
         return block(inplanes, dilation_series, padding_series, num_classes)
 
-
     def forward(self, x, domain_list, ssl, target_ensembel=False, ensembel=False):
 
         if ensembel:
             if target_ensembel:
-                x = torch.concat(ssl,  dim=1) #torch.concat(torch.split(x, b//(self.num_target-2), 0), dim=1)
+                x = torch.concat(ssl, dim=1)  # torch.concat(torch.split(x, b//(self.num_target-2), 0), dim=1)
             else:
-                x = torch.concat(ssl[:-1], dim=1) ## the last feature is domain-agnostic
+                x = torch.concat(ssl[:-1], dim=1)  ## the last feature is domain-agnostic
         else:
             x = self.features(x)
             ssl.append(x)
@@ -548,7 +563,7 @@ class VGG(nn.Module):
             b1.append(self.bn_pretrain.parameters())
 
         for layer in self.layer5_list:
-            if layer != self.layer5_list[-2]: ## -1
+            if layer != self.layer5_list[-2]:  ## -1
                 b1.append(layer.parameters())
 
         for j in range(len(b1)):
@@ -572,13 +587,12 @@ class VGG(nn.Module):
     def get_10x_lr_params_new(self):
 
         b = []
-        layer = self.layer5_list[-2] ##-1
+        layer = self.layer5_list[-2]  ##-1
         b.append(layer.parameters())
 
         for j in range(len(b)):
             for i in b[j]:
                 yield i
-
 
     def optim_parameters_new(self, args):
         return [{'params': self.get_1x_lr_params_new(), 'lr': args.learning_rate},
@@ -613,8 +627,7 @@ class VGG(nn.Module):
 
 
 def DeeplabVGG(BatchNorm, num_classes=7, num_target=1, freeze_bn=False, restore_from=None, initialization=None,
-            bn_clr=False, stage=None):
-
+               bn_clr=False, stage=None):
     vgg = models.vgg16()
     model = VGG(vgg, num_classes, BatchNorm, num_target=num_target, bn_clr=bn_clr, stage=stage)
 
@@ -645,46 +658,8 @@ def DeeplabVGG(BatchNorm, num_classes=7, num_target=1, freeze_bn=False, restore_
     return model
 
 
-#### For segformer backbone
-def build_layer(in_channels, out_channels, type, **kwargs):
-    if type == 'id':
-        return nn.Identity()
-    elif type == 'mlp':
-        return MLP(input_dim=in_channels, embed_dim=out_channels)
-    elif type == 'aspp':
-        return ASPPWrapper(
-            in_channels=in_channels, channels=out_channels, **kwargs)
-    else:
-        raise NotImplementedError(type)
-
-
-class Classifier_Module3(nn.Module):
-    def __init__(self, embed_dims, channels, dropout_ratio, num_classes, fusion_cfg):
-        super(Classifier_Module3, self).__init__()
-        self.fuse_layer = build_layer(embed_dims, channels, **fusion_cfg)
-        self.dropout_ratio = dropout_ratio
-        self.conv_seg = nn.Conv2d(channels, num_classes, kernel_size=1)
-        self.conv_seg.weight.data.normal_(mean=0, std=0.01)
-        self.conv_seg.bias.data.zero_()
-        self.dropout = nn.Dropout2d(self.dropout_ratio)
-
-    def forward(self, x, get_feat=False):
-
-        x = self.fuse_layer(x) ## ASPP
-        feat = self.dropout(x)
-        out = self.conv_seg(feat) ### classifier
-
-        if get_feat:
-            out_dict = {}
-            out_dict['feat'] = feat
-            out_dict['out'] = out
-            return out_dict
-        else:
-            return out
-
-
 class SegFormer(nn.Module):
-    def __init__(self, num_classes,  BatchNorm, num_target=1, bn_clr=False, stage=None, phi='b5', pretrained=True):
+    def __init__(self, num_classes, BatchNorm, num_target=1, bn_clr=False, stage=None, phi='b5', pretrained=True):
         super(SegFormer, self).__init__()
 
         self.bn_clr = bn_clr
@@ -697,86 +672,51 @@ class SegFormer(nn.Module):
 
         self.channels = 256
         self.in_index = [0, 1, 2, 3]
-        self.dropout_ratio=0.1
-        self.num_classes=num_classes
+        self.dropout_ratio = 0.1
+        self.num_classes = num_classes
         self.align_corners = False
-        self.norm_cfg = dict(type='BN', requires_grad=True)
-        embed_dims = 256
-        if isinstance(embed_dims, int):
-            embed_dims = [embed_dims] * len(self.in_index)
-
-        embed_cfg = dict(type='mlp', act_cfg=None, norm_cfg=None)
-        embed_neck_cfg = dict(type='mlp', act_cfg=None, norm_cfg=None)
-
-        self.embed_layers = {}
-        for i, in_channels, embed_dim in zip(self.in_index, self.in_channels,
-                                             embed_dims):
-            if i == self.in_index[-1]:
-                self.embed_layers[str(i)] = build_layer(
-                    in_channels, embed_dim, **embed_neck_cfg)
-            else:
-                self.embed_layers[str(i)] = build_layer(
-                    in_channels, embed_dim, **embed_cfg)
-        self.embed_layers = nn.ModuleDict(self.embed_layers)
-
-        fusion_cfg = dict(
-            align_corners=self.align_corners,
-            type='aspp',
-            sep=True,
-            dilations=(1, 6, 12, 18),
-            pool=False,
-            act_cfg=dict(type='ReLU'),
-            norm_cfg=dict(type='BN', requires_grad=True))
 
         self.layer5_list = nn.ModuleList()
         if stage == 'stage1':
             for i in range(self.num_target):
-                if i != self.num_target -1:
-                    layer = self._make_pred_layer(Classifier_Module3, sum(embed_dims),
-                                                  self.channels, self.dropout_ratio, self.num_classes, fusion_cfg)
+                if i != self.num_target - 1:
+                    layer = self._make_pred_layer(Classifier_Module2, 1024, [6, 12, 18, 24], [6, 12, 18, 24],
+                                                  self.num_classes)
                 else:
-                    layer = self._make_pred_layer(Classifier_Module3, sum(embed_dims)*(self.num_target -2),
-                                                  self.channels, self.dropout_ratio, self.num_classes, fusion_cfg) ## ensemble
+                    layer = self._make_pred_layer(Classifier_Module2, 1024 * (self.num_target - 2), [6, 12, 18, 24],
+                                                  [6, 12, 18, 24], self.num_classes)  ## ensemble
                 self.layer5_list.append(layer)
         else:
             for i in range(self.num_target):
-                layer = self._make_pred_layer(Classifier_Module3, sum(embed_dims),
-                                              self.channels, self.dropout_ratio, self.num_classes, fusion_cfg)
+                layer = self._make_pred_layer(Classifier_Module2, 1024, [6, 12, 18, 24], [6, 12, 18, 24], self.num_classes)
                 self.layer5_list.append(layer)
 
         if self.bn_clr:
-            self.bn_pretrain = BatchNorm(sum(embed_dims), affine=affine_par)
+            self.bn_pretrain = BatchNorm(1024, affine=affine_par)
 
-    def _make_pred_layer(self, block,  embed_dims, channels, dropout_ratio, num_classes, fusion_cfg):
-        return block(embed_dims, channels, dropout_ratio, num_classes, fusion_cfg)
+        for m in self.layer5_list.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, 0.01)
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+            elif isinstance(m, SynchronizedBatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
 
+    def _make_pred_layer(self, block, inplanes, dilation_series, padding_series, num_classes):
+        return block(inplanes, dilation_series, padding_series, num_classes)
 
     def forward(self, x, domain_list, ssl, target_ensembel=False, ensembel=False):
 
         if ensembel:
             if target_ensembel:
-                x = torch.concat(ssl,  dim=1) #torch.concat(torch.split(x, b//(self.num_target-2), 0), dim=1)
+                x = torch.concat(ssl, dim=1)  # torch.concat(torch.split(x, b//(self.num_target-2), 0), dim=1)
             else:
-                x = torch.concat(ssl[:-1], dim=1) ## the last feature is domain-agnostic
+                x = torch.concat(ssl[:-1], dim=1)  ## the last feature is domain-agnostic
         else:
             x = self.backbone.forward(x)
-
-            # n, _, h, w = x[-1].shape
-            # os_size = x[0].size()[2:]
-            # _c = {}
-            # for i in self.in_index:
-            #     _c[i] = self.embed_layers[str(i)](x[i])
-            #     if _c[i].dim() == 3:
-            #         _c[i] = _c[i].permute(0, 2, 1).contiguous() \
-            #             .reshape(n, -1, x[i].shape[2], x[i].shape[3])
-            #     if _c[i].size()[2:] != os_size:
-            #         _c[i] = resize(
-            #             _c[i],
-            #             size=os_size,
-            #             mode='bilinear',
-            #             align_corners=self.align_corners)
-            # x = torch.cat(list(_c.values()), dim=1)
-            ####
             inputs = [x[i] for i in self.in_index]
             upsampled_inputs = [resize(input=x, size=inputs[0].shape[2:],
                                        mode='bilinear', align_corners=self.align_corners) for x in inputs]
@@ -797,8 +737,6 @@ class SegFormer(nn.Module):
 
         b = []
         b.append(self.backbone)
-        b.append(self.embed_layers)
-
         for i in range(len(b)):
             for j in b[i].modules():
                 jj = 0
@@ -812,7 +750,6 @@ class SegFormer(nn.Module):
         b = []
         if self.bn_clr:
             b.append(self.bn_pretrain.parameters())
-
         for layer in self.layer5_list:
             b.append(layer.parameters())
 
@@ -824,7 +761,6 @@ class SegFormer(nn.Module):
 
         b = []
         b.append(self.backbone)
-        b.append(self.embed_layers)
 
         for i in range(len(b)):
             for j in b[i].modules():
@@ -839,7 +775,7 @@ class SegFormer(nn.Module):
             b1.append(self.bn_pretrain.parameters())
 
         for layer in self.layer5_list:
-            if layer != self.layer5_list[-2]: ## -1
+            if layer != self.layer5_list[-2]:  ## -1
                 b1.append(layer.parameters())
 
         for j in range(len(b1)):
@@ -849,13 +785,12 @@ class SegFormer(nn.Module):
     def get_10x_lr_params_new(self):
 
         b = []
-        layer = self.layer5_list[-2]  ##-1
+        layer = self.layer5_list[-2]
         b.append(layer.parameters())
 
         for j in range(len(b)):
             for i in b[j]:
                 yield i
-
 
     def optim_parameters_new(self, args):
         return [{'params': self.get_1x_lr_params_new(), 'lr': args.learning_rate},
@@ -890,8 +825,7 @@ class SegFormer(nn.Module):
 
 
 def DeeplabSegFormer(BatchNorm, num_classes=7, num_target=1, freeze_bn=False, restore_from=None, initialization=None,
-            bn_clr=False, stage=None):
-
+                     bn_clr=False, stage=None):
     model = SegFormer(num_classes, BatchNorm, num_target=num_target, bn_clr=bn_clr, stage=stage, phi='b5')
 
     if freeze_bn:

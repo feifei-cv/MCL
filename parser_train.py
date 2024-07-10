@@ -8,7 +8,7 @@ def parser_(parser):
     parser.add_argument('--model_name', type=str, default='deeplabv2', help='deeplabv2')
     parser.add_argument('--name', type=str, default='warmup_G2CI', help='pretrain source model')
     parser.add_argument('--lr', type=float, default=0.00025)
-    parser.add_argument('--bs', type=int, default=8)
+    parser.add_argument('--bs', type=int, default=4)
     parser.add_argument('--freeze_bn', action='store_true')
     parser.add_argument('--train_iters', type=int, default=60000)
     parser.add_argument('--bn', type=str, default='sync_bn', help='sync_bn|bn|gn|adabn')
