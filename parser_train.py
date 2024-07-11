@@ -28,9 +28,9 @@ def parser_(parser):
     parser.add_argument('--used_save_pseudo', action='store_true', help='if True used saved pseudo label')
     parser.add_argument('--no_droplast', action='store_true')
 
-    parser.add_argument('--img_size', type=str, default='640,320', help='image resolution')
-    parser.add_argument('--resize', type=int, default=640, help='resize long size')
-    parser.add_argument('--rcrop', type=str, default='320,160', help='rondom crop size')
+    parser.add_argument('--img_size', type=str, default='640,320', help='image resolution') ### 960， 480 for segformer backbone
+    parser.add_argument('--resize', type=int, default=640, help='resize long size')  ### 960
+    parser.add_argument('--rcrop', type=str, default='320,160', help='rondom crop size') ## 480,240
     parser.add_argument('--hflip', type=float, default=0.5, help='random flip probility')
 
     parser.add_argument('--n_class', type=int, default=7, help='7|19')
