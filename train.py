@@ -53,6 +53,16 @@ def train(opt, logger, opt_pl):
     model.iter = 0
     for i in range(opt.train_iters): ### 60000
         if opt.stage == 'stage1' and (i + 1) % 10000 == 0 and i != opt.train_iters - 1:
+            restore_from = 'Code/MST/logs/stage1_G2CI/from_gta5_to_2_on_deeplabv2_best_model.pkl'
+            # checkpoint = torch.load(restore_from)['VGG']["model_state"]
+            checkpoint = torch.load(restore_from)['SegFormer']["model_state"]
+            model_dict = {}
+            state_dict = model.BaseNet.state_dict()
+            for k, v in checkpoint.items():
+                if k in state_dict:
+                    model_dict[k] = v
+            state_dict.update(model_dict)
+            model.BaseNet.load_state_dict(state_dict)
             generate_pl(model, logger, datasets_pl, device, opt_pl)
         source_data = datasets.source_train_loader.next()
         data_target_list = []
